@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2006 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.9
+;; Version: 0.9.1
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -54,6 +54,18 @@
 
 ;;; Change log:
 ;;
+;; Version 0.9.1
+;; * fixed bug in `dictree-dump-words-to-buffer' (thanks to Dan Pomohaci
+;;   for reporting it)
+;; * replaced "word" with "key" in function arguments and docstrings,
+;;   since keys don't have to be words
+;; * removed "words" from dump functions' names, added TYPE argument in
+;;   line with other functions, and made them non-interactive
+;; * added COMPARE-FUNCTION argument to `dictree-create', which defaults
+;;   to subtraction as before
+;; * `dictree-read-line' reads the keys with `read', and no longer evals
+;;   the data as this fails for simple, useful cases (e.g. constant lists)
+;;
 ;; Version 0.9
 ;; * added meta-dictionary functionality
 ;; * dictionary data can now be referenced by any sequence type, not just
@@ -83,14 +95,11 @@
 ;;   lookup-only dicts
 ;; * `dict-insert' now returns the new data value
 ;; * rewrote cache data structures: data is now wrapped inside a cons
-;;   cell, so
-;;   that cache entries can point to it instead of duplicating it. This
-;;   fixes
-;;   some caching bugs and makes updating cached data when inserting words
-;;   much faster
+;;   cell, so that cache entries can point to it instead of duplicating
+;;   it. This fixes some caching bugs and makes updating cached data when
+;;   inserting words much faster
 ;; * dictionaries (but not lookup-only) can now associate two pieces of
-;;   data
-;;   with each word: normal data, used to rank words returned by
+;;   data with each word: normal data, used to rank words returned by
 ;;   `dict-complete-ordered', and meta-data, not used for ranking
 ;; * modified functions to work with new caching and meta-data, and added
 ;;   `dict-set-meta-data' and `dict-lookup-meta-data'
@@ -490,7 +499,9 @@ lookup-only is set for the dictionary)."
 (defun dictree-create (name &optional filename autosave
 			      lookup-speed complete-speed
 			      ordered-speed lookup-only
-			      insert-function rank-function
+			      compare-function
+			      insert-function
+			      rank-function
 			      unlisted)
   "Create an empty dictionary stored in variable NAME, and return it.
 
@@ -502,13 +513,13 @@ it is unloaded or when exiting emacs.
 The SPEED settings set the desired speed for the corresponding
 dictionary search operations (lookup, completion, ordered
 completion), in seconds. If a particular instance of the
-operation \(e.g. looking up the word \"cat\"\) takes longer than
-this, the results will be cached in a hash table. If exactly the
-same operation is requested subsequently, it should perform
-significantly faster. \(Note \"should\": there's no guarantee!\)
-The down side is that the memory or disk space required to store
-the dictionary grows, and inserting words into the dictionary
-becomes slower, since the cache has to be synchronized.
+operation takes longer than this, the results will be cached in a
+hash table. If exactly the same operation is requested
+subsequently, it should perform significantly faster. \(Note
+\"should\": there's no guarantee!\) The down side is that the
+memory or disk space required to store the dictionary grows, and
+inserting keys into the dictionary becomes slightly slower, since
+the cache has to be synchronized.
 
 All SPEED's default to nil. The values nil and t are special. If
 a SPEED is set to nil, no caching is done for that operation. If
@@ -524,6 +535,15 @@ data. This is appropriate when a dictionary is only going to be
 used for lookup, since it speeds up lookups *and* decreases the
 memory required.
 
+Optional argument COMPARE-FUNCTION sets the function used to
+compare elements of the keys. It should take two arguments, A and
+B, both of the type contained by the sequences used as keys
+\(e.g. if the keys will be strings, the function will be passed
+two integers, since characters are represented as integers\). It
+should return a negative number if A is \"smaller\" than B, a
+positive number if A is \"larger\" than B, and 0 if A and B are
+\"equal\". It defaults to subtraction, which requires the key
+sequences to contain numbers or characters.
 
 Optional argument INSERT-FUNCTION sets the function used to
 insert data into the dictionary. It should take two arguments:
@@ -537,8 +557,8 @@ take two arguments, each a cons whose car is a key in the
 dictionary and whose cdr is the data associated with that key. It
 should return non-nil if the first argument is \"better\" than
 the second, nil otherwise. It defaults to string comparison of
-the words, ignoring the data \(which is not very useful, since
-the `dictree-complete' function already returns completions in
+the keys, ignoring the data \(which is not very useful, since the
+`dictree-complete' function already returns completions in
 alphabetical order much more efficiently, but at least will never
 cause any errors, whatever data is stored!\)
 
@@ -563,8 +583,8 @@ disable autosaving."
   ;;  ordered-hash / nil
   ;;  ordered-speed / nil
   ;; )
-  (let (dict insfun rankfun)
-    
+  (let (dict compfun insfun rankfun)
+
     (if lookup-only
 	;; if dict is lookup only, use insert-function since there's no
 	;; need to wrap data
@@ -575,6 +595,10 @@ disable autosaving."
 			      `(dictree--wrap-insfun ,insert-function)))
 		     ;; insert-function defaults to "replace"
 		     (lambda (a b) a))))
+
+    ;; comparison function defaults to subtraction
+    (unless lookup-only
+      (setq compfun (if compare-function compare-function '-)))
     
     (unless lookup-only
       (setq rankfun (if rank-function
@@ -598,7 +622,7 @@ disable autosaving."
 
 	   ;; normal dictionary
 	   (list 'DICT (symbol-name name) filename autosave t nil
-		 (tstree-create '- insfun rankfun) insfun rankfun
+		 (tstree-create compfun insfun rankfun) insfun rankfun
 		 (if lookup-speed (make-hash-table :test 'equal) nil)
 		 lookup-speed
 		 (if complete-speed (make-hash-table :test 'equal) nil)
@@ -703,7 +727,7 @@ numerical \"greater-than\" comparison of the data."
     
     (dictree-create name filename autosave
 		 lookup-speed complete-speed ordered-speed
-		 lookup-only insfun rankfun))
+		 lookup-only nil insfun rankfun))
 )
 
 
@@ -858,19 +882,19 @@ already exists). It should return the data to insert."
 
 
 
-(defun dictree-lookup (dict word)
-  "Return the data associated with WORD in dictionary DICT,
-or nil if WORD is not in the dictionary.
+(defun dictree-lookup (dict key)
+  "Return the data associated with KEY in dictionary DICT,
+or nil if KEY is not in the dictionary.
 
-Note: this will not distinguish between a non-existent WORD and a
-WORD whose data is nil. \(\"spell-check\" type dictionaries
+Note: this will not distinguish between a non-existent KEY and a
+KEY whose data is nil. \(\"spell-check\" type dictionaries
 created using `dictree-create-type' store t as the data for every
-word to avoid this problem) Use `dictree-member-p' to distinguish
-non-existent words from nil data."
+key to avoid this problem) Use `dictree-member-p' to distinguish
+non-existent keys from nil data."
   
-  ;; first check the lookup hash for the word
+  ;; first check the lookup hash for the key
   (let ((data (when (dictree--lookup-speed dict)
-		(gethash word (dictree--lookup-hash dict))))
+		(gethash key (dictree--lookup-hash dict))))
 	(combfun (when (dictree--meta-dict-p dict)
 		   (dictree--combfun dict)))
 	time)
@@ -885,7 +909,7 @@ non-existent words from nil data."
 	(setq time (float-time))
 	(mapc (lambda (dic)
 		(setq data (funcall (dictree--combfun dict) data
-				    (dictree-lookup dic word))))
+				    (dictree-lookup dic key))))
 	      (dictree--dict-list dict))
 	(setq time (- (float-time) time))
 	
@@ -895,7 +919,7 @@ non-existent words from nil data."
 		   (or (eq (dictree--lookup-speed dict) t)
 		       (> time (dictree--lookup-speed dict))))
 	  (dictree--set-modified dict t)
-	  (puthash word data (dictree--lookup-hash dict))))
+	  (puthash key data (dictree--lookup-hash dict))))
        
 
        ;; if nothing was found in the cache, and the dictionary is not
@@ -903,7 +927,7 @@ non-existent words from nil data."
        ((not (dictree--lookup-only dict))
 	;; time the lookup
 	(setq time (float-time))
-	(setq data (tstree-member (dictree--tstree dict) word combfun))
+	(setq data (tstree-member (dictree--tstree dict) key combfun))
 	(setq time (- (float-time) time))
 	
 	;; if the lookup was slower than the dictionary's lookup speed,
@@ -912,7 +936,7 @@ non-existent words from nil data."
 		   (or (eq (dictree--lookup-speed dict) t)
 		       (> time (dictree--lookup-speed dict))))
 	  (dictree--set-modified dict t)
-	  (puthash word data (dictree--lookup-hash dict))))
+	  (puthash key data (dictree--lookup-hash dict))))
        ))
     
     ;; return the data
@@ -921,13 +945,10 @@ non-existent words from nil data."
 
 
 
-(defun dictree-set-meta-data (dict word meta-data)
-  "Set meta-data (data not used to rank words) for WORD
+(defun dictree-set-meta-data (dict key meta-data)
+  "Set meta-data (data not used to rank keys) for KEY
 in dictionary DICT."
   
-  ;; make sure WORD is a string
-  (when (not (stringp word))
-    (error "Wrong argument type stringp, %s" (prin1-to-string word)))
   (when (not (dictree-p dict))
     (error "Wrong argument type dictree-p"))
   
@@ -937,28 +958,28 @@ in dictionary DICT."
   ;; if dictionary is lookup-only, refuse!
   (if (dictree--lookup-only dict)
       (error "Lookup-only dictionaries can't contain meta-data")
-    ;; otherwise, set word's meta-data
+    ;; otherwise, set key's meta-data
     (dictree--set-metadata
-     (tstree-member (dictree--tstree dict) word) meta-data))
+     (tstree-member (dictree--tstree dict) key) meta-data))
 )
 
 
 	
-(defun dictree-lookup-meta-data (dict word)
-  "Return any meta-data (data not used to rank words)
-associated with WORD in dictionary DICT, or nil if WORD is not in
+(defun dictree-lookup-meta-data (dict key)
+  "Return any meta-data (data not used to rank keys)
+associated with KEY in dictionary DICT, or nil if KEY is not in
 the dictionary.
 
-Note: this will not distinguish between a non-existent WORD and a
-WORD with no meta-data. Use `dictree-member-p' to distinguish
-non-existent words."
+Note: this will not distinguish between a non-existent KEY and a
+KEY with no meta-data. Use `dictree-member-p' to distinguish
+non-existent keys."
 
   (when (dictree--lookup-only dict)
     (error "Lookup-only dictionaries can't contain meta-data"))
   
-  ;; first check the lookup hash for the word
+  ;; first check the lookup hash for the key
   (let ((data (if (dictree--lookup-speed dict)
-		  (gethash word (dictree--lookup-hash dict))
+		  (gethash key (dictree--lookup-hash dict))
 		nil))
 	(combfun (when (dictree--meta-dict-p dict)
 		   (dictree--combfun dict)))
@@ -969,7 +990,7 @@ non-existent words."
       ;; time the lookup
       (let (time)
 	(setq time (float-time))
-	(setq data (tstree-member (dictree--tstree dict) word combfun))
+	(setq data (tstree-member (dictree--tstree dict) key combfun))
 	(setq time (- (float-time) time))
 	
         ;; if the lookup was slower than the dictionary's lookup speed,
@@ -978,7 +999,7 @@ non-existent words."
 		   (or (eq (dictree--lookup-speed dict) t)
 		       (> time (dictree--lookup-speed dict))))
 	  (dictree--set-modified dict t)
-	  (puthash word data (dictree--lookup-hash dict)))))
+	  (puthash key data (dictree--lookup-hash dict)))))
     
     ;; return the meta-data
     (dictree--get-metadata data))
@@ -987,31 +1008,31 @@ non-existent words."
 
 
 
-(defun dictree-member-p (dict word)
-  "Return t if WORD is in dictionary DICT, nil otherwise."
+(defun dictree-member-p (dict key)
+  "Return t if KEY is in dictionary DICT, nil otherwise."
 
   ;; if dictionary is a meta-dictionary, look in dictionaries it's based on
   (cond
    ((dictree--meta-dict-p dict)
     (catch 'found
       (dolist (dic (dictree--dict-list dict))
-	(when (dictree-member-p dic word) (throw 'found t)))))
+	(when (dictree-member-p dic key) (throw 'found t)))))
    
    ;; lookup-only, look in lookup hash and use dummy variable to
-   ;; distinguish non-existent words from those with nil data
+   ;; distinguish non-existent keys from those with nil data
    ((dictree--lookup-only dict)
-    (if (eq (gethash word (dictree--lookup-hash dict) 'not-in-here)
+    (if (eq (gethash key (dictree--lookup-hash dict) 'not-in-here)
 	    'not-in-here)
 	nil t))
    
    ;; otherwise look in the ternary search tree
-   (t (tstree-member-p (dictree--tstree dict) word)))
+   (t (tstree-member-p (dictree--tstree dict) key)))
 )
 
 
 
-;; (defun dictree-delete (dict word)
-;;   "Delete WORD from DICT"
+;; (defun dictree-delete (dict key)
+;;   "Delete KEY from DICT"
 ;; )
 
 
@@ -1035,8 +1056,8 @@ If TYPE is 'string, it must be possible to apply the function
 ;;     ;; problem, since `tstree-map' also binds the symbol `function' ;;
 ;;     ;; (let ((dictree-map-function function))
       (tstree-map
-       `(lambda (word data)
-	  (funcall ,function word (dictree--get-data data)))
+       `(lambda (key data)
+	  (funcall ,function key (dictree--get-data data)))
        (dictree--tstree dict) type));)
 )
 
@@ -1046,23 +1067,23 @@ If TYPE is 'string, it must be possible to apply the function
   "Apply FUNCTION to all entries in dictionary DICT,
 and make a list of the results.
 
-FUNCTION will be passed two arguments: a word from the
-dictionary, and the data associated with that word. It is safe to
+FUNCTION will be passed two arguments: a key from the
+dictionary, and the data associated with that key. It is safe to
 assume the dictionary entries will be traversed in alphabetical
 order."
   
   (if (dictree--lookup-only dict)
       (let (result)
-	(maphash `(lambda function (word data)
-		    (cons (,function word data) result))
+	(maphash `(lambda function (key data)
+		    (cons (,function key data) result))
 		 (dictree--lookup-hash dict))
 	result)
     ;; need to "rename" `function' or we hit a nasty dynamic scoping
     ;; problem, since `tstree-map' also binds the symbol `function'
     (let ((dictree-map-function function))
       (tstree-map
-       (lambda (word data)
-	 (funcall dictree-map-function word (dictree--get-data data)))
+       (lambda (key data)
+	 (funcall dictree-map-function key (dictree--get-data data)))
        (dictree--tstree dict) t t)))
 )
 
@@ -1404,59 +1425,49 @@ of the result."
 
 
 (defun dictree-populate-from-file (dict file)
-  "Populate dictionary DICT from the word list in file FILE. Each
-line of the file should contain a word, delimeted by \"\". Use
-the escape sequence \\\" to include a \" in the string. If a line
-does not contain a delimeted string, it is silently ignored. The
-words should ideally be sorted alphabetically.
+  "Populate dictionary DICT from the key list in file FILE.
 
-Each line can also include data to be associated with the word,
-separated from the word by whitespace. Anything after the
-whitespace is considered data. String data should be
-\"\"-delimited, and must be on a single line. However, the escape
-sequence \"\\n\" can be used to include a newline, the escape
-sequence \\\" can again be used to include a \", and the escape
-sequence \\\\ must be used to include a \\.
+Each line of the file should contain a key, either a string
+\(delimeted by \"\), a vector or a list. (Use the escape sequence
+\\\" to include a \" in a string.) If a line does not contain a
+key, it is silently ignored. The keys should ideally be sorted
+\"alphabetically\", as defined by the dictionary's
+comparison-function \(see `dictree-create'\).
+
+Each line can optionally include data and meta-data to be
+associated with the key, separated from each other and the key by
+whitespace.
 
 
 Technicalities:
 
-The word and data can actually be separated by any character that
-is not a word-constituent according to the standard syntax
-table. However, you're safest sticking to whitespace.
-
-The data is read as a lisp expression and evaluated, so can be
-more complex than a simple constant. However, it must be entirely
-on one line. The symbol \"_word\" can be used to refer to the
-word associated with the data.
-
-The word list is read from the middle outwards, i.e. first the
-middle word is read, then the word directly after it, then the
-word directly before it, then the one two lines after the middle,
-and so on. Assuming the words in the file are sorted
-alphabetically, this helps produce a reasonably efficient
-dictionary. However, it may have implications if the data is a
-lisp expression that has side-effects."
+The key, data and meta-data are read as lisp expressions using
+`read', and are read from the middle outwards, i.e. first the
+middle key is read, then the key directly after it, then the key
+directly before it, then the one two lines after the middle, and
+so on. Assuming the keys in the file are sorted
+\"alphabetically\", this helps produce a reasonably efficient
+dictionary structure."
   
   (save-excursion
     (let ((buff (generate-new-buffer " *dictree-populate*")))
-      ;; insert the word list into a temporary buffer
+      ;; insert the key list into a temporary buffer
       (set-buffer buff)
       (insert-file-contents file)
       
-      ;; insert the words starting from the median to ensure a reasonably
+      ;; insert the keys starting from the median to ensure a reasonably
       ;; well-balanced tree
       (let* ((lines (count-lines (point-min) (point-max)))
 	     (midpt (+ (/ lines 2) (mod lines 2)))
 	     entry)
-        ;; insert the median word and set the dictionary's modified flag
+        ;; insert the median key and set the dictionary's modified flag
 	(goto-line midpt)
 	(when (setq entry (dictree-read-line))
 	  (dictree-insert dict (car entry) (nth 1 entry))
 	  (dictree-set-meta-data dict (car entry) (nth 2 entry)))
-	(message "Inserting words in %s...(1 of %d)"
+	(message "Inserting keys in %s...(1 of %d)"
 		 (dictree--name dict) lines)
-        ;; insert words successively further away from the median in both
+        ;; insert keys successively further away from the median in both
         ;; directions
 	(dotimes (i (1- midpt))
 	  (goto-line (+ midpt i 1))
@@ -1464,21 +1475,21 @@ lisp expression that has side-effects."
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (dictree-set-meta-data dict (car entry) (nth 2 entry)))
 	  (when (= 49 (mod i 50))
-	    (message "Inserting words in %s...(%d of %d)"
+	    (message "Inserting keys in %s...(%d of %d)"
 		     (dictree--name dict) (+ (* 2 i) 2) lines))
 	  (goto-line (- midpt i 1))
 	  (when (setq entry (dictree-read-line))
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (dictree-set-meta-data dict (car entry) (nth 2 entry))))
 	
-        ;; if file contains an even number of words, we still have to add
+        ;; if file contains an even number of keys, we still have to add
         ;; the last one
 	(when (= 0 (mod lines 2))
 	  (goto-line lines)
 	  (when (setq entry (dictree-read-line))
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (dictree-set-meta-data dict (car entry) (nth 2 entry))))
-	(message "Inserting words in %s...done" (dictree--name dict)))
+	(message "Inserting keys in %s...done" (dictree--name dict)))
       
       (kill-buffer buff)))
 )
@@ -1487,24 +1498,24 @@ lisp expression that has side-effects."
 
 ;;; FIXME: doesn't fail gracefully if file has invalid format
 (defun dictree-read-line ()
-  "Return a cons containing the word and data \(if any, otherwise
+  "Return a cons containing the key and data \(if any, otherwise
 nil\) at the current line of the current buffer. Returns nil if
 line is in wrong format."
   
   (save-excursion
-    (let (_word data meta-data)
+    (let (key data meta-data)
       ;; search for text between quotes "", ignoring escaped quotes \"
       (beginning-of-line)
-      (setq _word (read (current-buffer)))
+      (setq key (read (current-buffer)))
       ;; if there is anything after the quoted text, use it as data
       (if (eq (line-end-position) (point))
-	  (list _word)
-	(setq data (eval (read (current-buffer))))
+	  (list key)
+	(setq data (read (current-buffer)))
 	(if (eq (line-end-position) (point))
-	    (list _word data)
+	    (list key data)
 	  (setq meta-data (read (current-buffer)))
-	  ;; return the word and data
-	  (list _word data meta-data)))
+	  ;; return the key and data
+	  (list key data meta-data)))
       ))
 )
 
@@ -1695,20 +1706,20 @@ NOT be saved even if its autosave flag is set."
 
 
 
-(defun dictree-dump-words-to-buffer (dict &optional buffer)
-  "Dump words and their associated data
+(defun dictree-dump-to-buffer (dict &optional buffer type)
+  "Dump keys and their associated data
 from dictionary DICT to BUFFER, in the same format as that used
-by `dictree-populate-from-file'. If BUFFER exists, words will be
+by `dictree-populate-from-file'. If BUFFER exists, data will be
 appended to the end of it. Otherwise, a new buffer will be
 created. If BUFFER is omitted, the current buffer is used.
+
+TYPE determines the type of sequence to use to represent the
+keys, and should be one of 'string, 'vector or 'list. The default
+is 'vector.
 
 Note that if the data does not have a read syntax, the dumped
 data can not be used to recreate the dictionary using
 `dictree-populate-from-file'."
-  
-  (interactive (list (read-dict "Dictionary to dump: ")
-		     (read-buffer "Buffer to dump to: "
-				  (buffer-name (current-buffer)))))
   
   ;; select the buffer, creating it if necessary
   (if buffer
@@ -1721,20 +1732,20 @@ data can not be used to recreate the dictionary using
   (unless (= (point) (line-beginning-position))
     (insert "\n"))
   
-  ;; dump words
-  (message "Dumping words from %s to %s..."
+  ;; dump keys
+  (message "Dumping keys from %s to %s..."
 	   (dictree--name dict) (buffer-name buffer))
   (let ((count 0) (dictsize (dictree-size dict)))
-    (message "Dumping words from %s to %s...(word 1 of %d)"
+    (message "Dumping keys from %s to %s...(key 1 of %d)"
 	     (dictree--name dict) (buffer-name buffer) dictsize)
     ;; construct dump function
     (let ((dump-func
-	   (lambda (word cell)
+	   (lambda (key cell)
 	     (when (= 99 (mod count 100))
-	       (message "Dumping words from %s to %s...(word %d of %d)"
+	       (message "Dumping keys from %s to %s...(key %d of %d)"
 			(dictree--name dict) (buffer-name buffer)
 			(1+ count) dictsize))
-	     (insert "\"" word "\"")
+	     (insert (prin1-to-string key))
 	     (let (data)
 	       (when (setq data (dictree--get-data cell))
 		 (insert " " (prin1-to-string data)))
@@ -1745,40 +1756,41 @@ data can not be used to recreate the dictionary using
       ;; map dump function over dictionary
       (if (dictree--lookup-only dict)
 	  (maphash dump-func (dictree--lookup-hash dict))
-	(tstree-map dump-func (dictree--tstree dict) t)))
-    (message "Dumping words from %s to %s...done"
+	(tstree-map dump-func (dictree--tstree dict) type)))
+    (message "Dumping keys from %s to %s...done"
 	     (dictree--name dict) (buffer-name buffer)))
   (switch-to-buffer buffer)
 )
 
 
 
-(defun dictree-dump-words-to-file (dict filename &optional overwrite)
-  "Dump words and their associated data
+(defun dictree-dump-to-file (dict filename &optional type overwrite)
+  "Dump keys and their associated data
 from dictionary DICT to a text file FILENAME, in the same format
-as that used by `dictree-populate-from-file'.
+as that used by `dictree-populate-from-file'. Prompts to overwrite
+FILENAME if it already exists, unless OVERWRITE is non-nil.
+
+TYPE determines the type of sequence to use to represent the
+keys, and should be one of 'string, 'vector or 'list. The default
+is 'vector.
 
 Note that if the data does not have a read syntax, the dumped
 data can not be used to recreate the dictionary using
 `dictree-populate-from-file'."
   
-  (interactive (list (read-dict "Dictionary to dump: ")
-		     (read-file-name "File to dump to: ")
-		     current-prefix-arg))
-
-  (let (buff)
-    ;; create temporary buffer and dump words to it
-    (setq buff (generate-new-buffer filename))
-    (save-window-excursion
-      (dictree-dump-words-to-buffer dict buff)
-      
-      ;; save file, prompting to overwrite if necessary
-      (if (and (file-exists-p filename)
-	       (not overwrite)
-	       (not (y-or-n-p
-		     (format "File %s already exists. Overwrite? "
-			     filename))))
-	  (message "Word dump cancelled")
+  ;; check if file exists, and prompt to overwrite it if necessary
+  (if (and (file-exists-p filename)
+	   (not overwrite)
+	   (not (y-or-n-p
+		 (format "File %s already exists. Overwrite? "
+			 filename))))
+      (message "Key dump cancelled")
+    
+    (let (buff)
+      ;; create temporary buffer, dump keys to it, and save to FILENAME
+      (setq buff (generate-new-buffer filename))
+      (save-window-excursion
+	(dictree-dump-to-buffer dict buff type)
 	(write-file filename))
       (kill-buffer buff)))
 )
