@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2006 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.8.3
+;; Version: 0.9
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -40,13 +40,31 @@
 ;; package also provides persistent storage of the data structures to
 ;; files.
 ;;
-;; A dictionary consists of a list containing either 5 or 10 elements
-;; (see the dictree-create function for details).
+;; You create a dictionary using `dictree-create', add entries to it
+;; using `dictree-insert', lookup entries using `dictree-lookup', find
+;; completions of sequences using `dictree-complete', find completions
+;; and sort them in any order you speficy using
+;; `dictree-complete-ordered', map over it using `dictree-map' and
+;; `dictree-mapcar', save it to a file using `dictree-save' or
+;; `dictree-write', and load from file it using
+;; `dictree-load'. Various other useful functions are also provided.
 ;;
 ;; This package uses the ternary search tree package, tstree.el.
 
 
 ;;; Change log:
+;;
+;; Version 0.9
+;; * added meta-dictionary functionality
+;; * dictionary data can now be referenced by any sequence type, not just
+;;   strings
+;; * removed cl dependency
+;;
+;; Note: version 0.8 dictionaries not compatible with version 0.9 and
+;;       above
+;;
+;; Version 0.8.4
+;; * fixed small bug in `read-dict'
 ;;
 ;; Version 0.8.3
 ;; * fixed internal function and macro names
@@ -57,17 +75,21 @@
 ;; * added more commentary
 ;;
 ;; Version 0.8.1
-;; * fixed nasty bug in `dict-map' and `dict-mapcar' caused by dynamic scoping
+;; * fixed nasty bug in `dict-map' and `dict-mapcar' caused by dynamic
+;;   scoping
 ;;
 ;; Version 0.8
 ;; * changed `dict-map(car)' into functions and made them work with
 ;;   lookup-only dicts
 ;; * `dict-insert' now returns the new data value
-;; * rewrote cache data structures: data is now wrapped inside a cons cell, so
-;;   that cache entries can point to it instead of duplicating it. This fixes
+;; * rewrote cache data structures: data is now wrapped inside a cons
+;;   cell, so
+;;   that cache entries can point to it instead of duplicating it. This
+;;   fixes
 ;;   some caching bugs and makes updating cached data when inserting words
 ;;   much faster
-;; * dictionaries (but not lookup-only) can now associate two pieces of data
+;; * dictionaries (but not lookup-only) can now associate two pieces of
+;;   data
 ;;   with each word: normal data, used to rank words returned by
 ;;   `dict-complete-ordered', and meta-data, not used for ranking
 ;; * modified functions to work with new caching and meta-data, and added
@@ -86,10 +108,12 @@
 ;; Version 0.6
 ;; * added dict-size function
 ;; * added dict-dump-words-to-buffer function
-;; * dictionaries now set their names and filenames by doing a library search
+;; * dictionaries now set their names and filenames by doing a library
+;;   search
 ;;   for themselves when loaded using require
 ;; * added `read-dict' minibuffer completion function
-;; * interactive commands that read a dictionary name now provide completion
+;; * interactive commands that read a dictionary name now provide
+;;   completion
 ;;
 ;; Version 0.5
 ;; * added dict-dump-words-to-file function
@@ -105,7 +129,8 @@
 ;; * fixed bug preventing dict caches being loaded properly;
 ;; * explicitly require cl.el;
 ;;
-;; Note: version 0.1 dictionaries not compatible with version 0.2 and above!
+;; Note: version 0.1 dictionaries not compatible with version 0.2 and
+;;       above!
 ;;
 ;; Version 0.1
 ;; * initial release
@@ -116,8 +141,60 @@
 
 (provide 'dict-tree)
 (require 'tstree)
-;; the only required common-lisp functions are `subseq', `map' and `merge'
-(require 'cl)
+
+
+
+;;; ================================================================
+;;;                Replacements for CL functions
+
+;; copied from cl-extra.el
+(defun dictree--subseq (seq start &optional end)
+  "Return the subsequence of SEQ from START to END.
+If END is omitted, it defaults to the length of the sequence.
+If START or END is negative, it counts from the end."
+  (if (stringp seq) (substring seq start end)
+    (let (len)
+      (and end (< end 0) (setq end (+ end (setq len (length seq)))))
+      (when (< start 0)
+	(setq start (+ start (or len (setq len (length seq))))))
+      (cond ((listp seq)
+	     (if (> start 0) (setq seq (nthcdr start seq)))
+	     (if end
+		 (let ((res nil))
+		   (while (>= (setq end (1- end)) start)
+		     (push (pop seq) res))
+		   (nreverse res))
+	       (copy-sequence seq)))
+	    (t
+	     (or end (setq end (or len (length seq))))
+	     (let ((res (make-vector (max (- end start) 0) nil))
+		   (i 0))
+	       (while (< start end)
+		 (aset res i (aref seq start))
+		 (setq i (1+ i) start (1+ start)))
+	       res))))))
+
+
+
+;; adapted from cl-seq.el
+(defun dictree--merge (list1 list2 predicate)
+  "Destructively merge the two lists to produce a new list
+sorted according to PREDICATE. The lists are assumed to already
+be sorted. The function PREDICATE is passed one entry from each
+list, and should return non-nil if the first argument should be
+sorted before the second."
+  (or (listp list1) (setq list1 (append list1 nil)))
+  (or (listp list2) (setq list2 (append list2 nil)))
+  (let ((res nil))
+    ;; build up result list backwards
+    (while (and list1 list2)
+      (if (funcall predicate (car list1) (car list2))
+	    (push (pop list1) res)
+	  (push (pop list2) res)))
+    ;; return result, plus any leftover entries (only one of list1 or
+    ;; list2 will be non-nil)
+    (nconc (nreverse res) list1 list2))
+)
 
 
 
@@ -150,119 +227,152 @@
 
 (defmacro dictree--set-filename (dict filename)  ; INTERNAL USE ONLY.
   ;; Set the filename of dictionary DICT
-  `(setcar (cdr (cdr ,dict)) ,filename)
+  `(setcar (nthcdr 2 ,dict) ,filename)
 )
 
 
 (defmacro dictree--autosave (dict)  ; INTERNAL USE ONLY
   ;; Return the autosave flag of dictionary DICT
-  `(nth 3 ,dict)
-)
+  `(nth 3 ,dict))
 
 
 (defmacro dictree--set-autosave (dict flag)  ; INTERNAL USE ONLY
   ;; Set the autosave flag of dictionary DICT
-  `(setcar (cdr (cdr (cdr ,dict))) ,flag)
-)
+  `(setcar (nthcdr 3 ,dict) ,flag))
 
 
 (defmacro dictree--modified (dict)  ; INTERNAL USE ONLY
   ;; Return the modified flag of dictionary DICT
-  `(nth 4 ,dict)
-)
+  `(nth 4 ,dict))
 
 
 (defmacro dictree--set-modified (dict flag)  ; INTERNAL USE ONLY
   ;; Set the modified flag of dictionary DICT
-  `(setcar (cdr (cdr (cdr (cdr ,dict)))) ,flag)
-)
-
-
-(defmacro dictree--tstree (dict)  ; INTERNAL USE ONLY.
-  ;; Return the ternary search tree of dictionary DICT
-  `(nth 5 ,dict)
-)
+  `(setcar (nthcdr 4 ,dict) ,flag))
 
 
 (defmacro dictree--lookup-only (dict)  ; INTERNAL USE ONLY.
-  ;; Return the lookup-only setting of dictionary DICT
-  `(nth 6 ,dict)
-)
+  ;; Return non-nil if dictionary DICT is lookup-only
+  `(nth 5 ,dict))
 
 
-(defmacro dictree--lookup-hash (dict)  ; INTERNAL USE ONLY
-  ;; Return the lookup hash table of dictionary DICT
-  `(nth 7 ,dict)
-)
+(defmacro dictree--dict-list (dict)
+  ;; Return the list of dictionaries on which meta-dictionary DICT is
+  ;; based.
+  `(nth 6 ,dict))
 
 
-(defmacro dictree--set-lookup-hash (dict hash)  ; INTERNAL USE ONLY
-  ;; Set the completion hash for dictionary DICT
-  `(setcar (cdr (cdr (cdr (cdr (cdr (cdr (cdr ,dict))))))) ,hash)
-)
+(defmacro dictree--set-dict-list (dict tstree)  ; INTERNAL USE ONLY.
+  ;; Set the ternary search tree of dictionary DICT.
+  `(setcar (nthcdr 6 ,dict) ,tstree))
 
 
-(defmacro dictree--lookup-speed (dict)  ; INTERNAL USE ONLY
-  ;; Return the lookup speed of dictionary DICT
-  `(nth 8 ,dict)
-)
+(defmacro dictree--meta-dict-p (dict)  ; INTERNAL USE ONLY
+  ;; Return non-nil if DICT is a meta-dictionary.
+  `(not (tstree-p (dictree--dict-list ,dict))))
 
 
-(defmacro dictree--completion-hash (dict)  ; INTERNAL USE ONLY
-  ;; Return the completion hash table of dictionary DICT
-  `(nth 9 ,dict)
-)
+(defun dictree--tstree (dict)  ; INTERNAL USE ONLY.
+  ;; Return the ternary search tree of dictionary DICT.
+  (if (dictree--meta-dict-p dict)
+      (mapcar (lambda (dic) (dictree--tstree dic)) (nth 6 dict))
+    (nth 6 dict)))
 
 
-(defmacro dictree--set-completion-hash (dict hash)  ; INTERNAL USE ONLY
-  ;; Set the completion hash for dictionary DICT
-  `(setcar (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr ,dict))))))))) ,hash)
-)
-
-
-(defmacro dictree--completion-speed (dict)  ; INTERNAL USE ONLY
-  ;; Return the completion speed of dictionary DICT
-  `(nth 10 ,dict)
-)
-
-
-(defmacro dictree--ordered-hash (dict)  ; INTERNAL USE ONLY
-  ;; Return the ordered completion hash table of dictionary DICT
-  `(nth 11 ,dict)
-)
-
-
-(defmacro dictree--set-ordered-hash (dict hash)  ; INTERNAL USE ONLY
-  ;; Set the completion hash for dictionary DICT
-  `(setcar (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr (cdr ,dict)
-							     ))))))))))
-	   ,hash)
-)
-
-
-(defmacro dictree--ordered-speed (dict)  ; INTERNAL USE ONLY
-  ;; Return the ordered completion speed of dictionary DICT
-  `(nth 12 ,dict)
-)
+(defmacro dictree--set-tstree (dict tstree)  ; INTERNAL USE ONLY.
+  ;; Set the ternary search tree of dictionary DICT.
+  `(setcar (nthcdr 6 ,dict) ,tstree))
 
 
 (defmacro dictree--insfun (dict)  ; INTERNAL USE ONLY.
   ;; Return the insert function of dictionary DICT.
-  `(if (dictree--lookup-only ,dict)
-       (nth 2 ,dict)
-     (tstree--tree-insfun (dictree--tstree ,dict)))
-)
+  `(nth 7 ,dict))
+
+
+(defmacro dictree--combfun (dict)  ; INTERNAL USE ONLY.
+  ;; Return the combine function of meta-dictionary DICT.
+  `(nth 7 ,dict))
 
 
 (defmacro dictree--rankfun (dict)  ; INTERNAL USE ONLY
   ;; Return the rank function of dictionary DICT.
-  `(if (dictree--lookup-only ,dict)
-       nil
-     (tstree--tree-rankfun (dictree--tstree ,dict)))
-)
+  `(nth 8 ,dict))
 
 
-(defmacro dictree--wrap-data (data &optional meta-data)  ; INTERNAL USE ONLY
+(defmacro dictree--lookup-hash (dict)  ; INTERNAL USE ONLY
+  ;; Return the lookup hash table of dictionary DICT
+  `(nth 9 ,dict))
+
+
+(defmacro dictree--set-lookup-hash (dict hash)  ; INTERNAL USE ONLY
+  ;; Set the completion hash for dictionary DICT
+  `(setcar (nthcdr 9 ,dict) ,hash))
+
+
+(defmacro dictree--lookup-speed (dict)  ; INTERNAL USE ONLY
+  ;; Return the lookup speed of dictionary DICT
+  `(nth 10 ,dict))
+
+
+(defmacro dictree--set-lookup-speed (dict speed)  ; INTERNAL USE ONLY
+  ;; Set the lookup speed of dictionary DICT
+  `(setcar (nthcdr 10 ,dict) ,speed))
+
+
+(defmacro dictree--completion-hash (dict)  ; INTERNAL USE ONLY
+  ;; Return the completion hash table of dictionary DICT
+  `(nth 11 ,dict))
+
+
+(defmacro dictree--set-completion-hash (dict hash)  ; INTERNAL USE ONLY
+  ;; Set the completion hash for dictionary DICT
+  `(setcar (nthcdr 11 ,dict) ,hash))
+
+
+(defmacro dictree--completion-speed (dict)  ; INTERNAL USE ONLY
+  ;; Return the completion speed of dictionary DICT
+  `(nth 12 ,dict))
+
+
+(defmacro dictree--set-completion-speed (dict speed)  ; INTERNAL USE ONLY
+  ;; Set the lookup speed of dictionary DICT
+  `(setcar (nthcdr 12 ,dict) ,speed))
+
+
+(defmacro dictree--ordered-hash (dict)  ; INTERNAL USE ONLY
+  ;; Return the ordered completion hash table of dictionary DICT
+  `(nth 13 ,dict))
+
+
+(defmacro dictree--set-ordered-hash (dict hash)  ; INTERNAL USE ONLY
+  ;; Set the completion hash for dictionary DICT
+  `(setcar (nthcdr 13 ,dict) ,hash))
+
+
+(defmacro dictree--ordered-speed (dict)  ; INTERNAL USE ONLY
+  ;; Return the ordered completion speed of dictionary DICT
+  `(nth 14 ,dict))
+
+
+(defmacro dictree--set-ordered-speed (dict speed)  ; INTERNAL USE ONLY
+  ;; Set the lookup speed of dictionary DICT
+  `(setcar (nthcdr 14 ,dict) ,speed))
+
+
+(defmacro dictree--meta-dict-list (dict)  ; INTERNAL USE ONLY
+  ;; Return list of meta-dictionaries which depend on DICT.
+  `(nthcdr 15 ,dict))
+
+
+(defmacro dictree--set-meta-dict-list (dict list)  ; INTERNAL USE ONLY
+  ;; Set list of dictionaries on which a meta-dictionary dict is based, or
+  ;; the list of meta-dictionaries dependent on dictionary DICT.
+  `(setcdr (nthcdr 14 ,dict) ,list))
+
+
+
+(defmacro dictree--wrap-data (data &optional meta-data)
+  ;; INTERNAL USE ONLY
   ;; wrap the data in a cons cell
   `(cons ,data ,meta-data))
 
@@ -287,21 +397,23 @@
   `(setcdr ,cell ,meta-data))
 
 
+
 (defmacro dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
   ;; return wrapped insfun to deal with data wrapping
   `(lambda (new cell)
      ;; if data doesn't already exist, wrap and return new data
      (if (null cell)
 	 (dictree--wrap-data (funcall ,insfun new nil))
-       ;; oterhwise, update data cons cell with new data and return it
-       (dictree--set-data cell (funcall ,insfun new (dictree--get-data cell)))
-       cell))
-)
+       ;; otherhwise, update data cons cell with new data and return it
+       (dictree--set-data cell (funcall ,insfun new
+					(dictree--get-data cell)))
+       cell)))
 
 
 (defmacro dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
   ;; return wrapped rankfun to deal with data wrapping
-  `(lambda (a b) (funcall ,rankfun (cons (car a) (dictree--get-data (cdr a)))
+  `(lambda (a b) (funcall ,rankfun
+			  (cons (car a) (dictree--get-data (cdr a)))
 			  (cons (car b) (dictree--get-data (cdr b))))))
 
 
@@ -326,7 +438,8 @@
   `(cdr ,cache))
 
 
-(defmacro dictree--set-cache-completions (cache completions)  ; INTERNAL USE ONLY
+(defmacro dictree--set-cache-completions (cache completions)
+  ;; INTERNAL USE ONLY
   ;; Set the completions list for cache entry CACHE
   `(setcar ,cache ,completions))
 
@@ -350,8 +463,28 @@
 
 (defun dictree-name (dict)
   "Return dictionary DICT's name."
-  (dictree--name dict)
+  (dictree--name dict))
+
+
+(defun dictree-insert-function (dict)
+  "Return the insertion function for dictionary DICT."
+  (dictree--insfun dict))
+
+
+(defun dictree-rank-function (dict)
+  "Return the rank function for the dictionary DICT (note: returns nil if
+lookup-only is set for the dictionary)."
+  (dictree--rankfun dict))
+
+
+
+(defun dictree-empty (dict)
+  "Return t if the dictionary DICT is empty, nil otherwise."
+  (if (dictree--lookup-only dict)
+      (= 0 (hash-table-count (dictree--lookup-hash dict)))
+    (tstree-empty (dictree--tstree dict)))
 )
+
 
 
 (defun dictree-create (name &optional filename autosave
@@ -400,14 +533,14 @@ defaults to replacing any existing data with the new data.
 
 Optional argument RANK-FUNCTION sets the function used to rank
 the results of the `dictree-complete-ordered' function. It should
-take two arguments, each a cons whose car is a word in the
-dictionary and whose cdr is the data associated with that
-word. It should return non-nil if the first argument is
-\"better\" than the second, nil otherwise. It defaults to string
-comparison of the words, ignoring the data \(which is not very
-useful, since the `dictree-complete' function already returns
-completions in alphabetical order much more efficiently, but at
-least will never cause any errors, whatever data is stored!\)
+take two arguments, each a cons whose car is a key in the
+dictionary and whose cdr is the data associated with that key. It
+should return non-nil if the first argument is \"better\" than
+the second, nil otherwise. It defaults to string comparison of
+the words, ignoring the data \(which is not very useful, since
+the `dictree-complete' function already returns completions in
+alphabetical order much more efficiently, but at least will never
+cause any errors, whatever data is stored!\)
 
 If optional argument UNLISTED is non-nil, the dictionary will not
 be added to the list of loaded dictionaries. Note that this will
@@ -419,47 +552,66 @@ disable autosaving."
   ;;  filename
   ;;  autosave flag
   ;;  modified flag
-  ;;  tstree / insert-function (if lookup-only)
-  ;   lookup-only
+  ;;  lookup-only
+  ;;  tstree / nil (if lookup-only)
+  ;;  insert-function
+  ;;  rank-function / nil
   ;;  lookup-hash
-  ;;  --- rest only if not lookup-only ---
-  ;;  lookup-speed
-  ;;  complete-hash
-  ;;  complete-speed
-  ;;  ordered-hash
-  ;;  ordered-speed)
+  ;;  lookup-speed / nil
+  ;;  complete-hash / nil
+  ;;  complete-speed / nil
+  ;;  ordered-hash / nil
+  ;;  ordered-speed / nil
+  ;; )
   (let (dict insfun rankfun)
     
-    ;; wrap insert-function and rank-function to deal with data wrapping
-    (setq insfun (if insert-function
-		     (eval (macroexpand `(dictree--wrap-insfun ,insert-function)))
-		   ;; insert-function defaults to "replace"
-		   (lambda (a b) a))
-	  
-	  rankfun (if rank-function
-		      (eval (macroexpand `(dictree--wrap-rankfun ,rank-function)))
-		    ;; rank-function defaults to numeric comparison of data
-		    (lambda (a b) (> (dictree--get-data (cdr a))
-				     (dictree--get-data (cdr b))))))
+    (if lookup-only
+	;; if dict is lookup only, use insert-function since there's no
+	;; need to wrap data
+	(setq insfun insert-function)
+      ;; otherwise, wrap insert-function to deal with data wrapping
+      (setq insfun (if insert-function
+		       (eval (macroexpand
+			      `(dictree--wrap-insfun ,insert-function)))
+		     ;; insert-function defaults to "replace"
+		     (lambda (a b) a))))
     
+    (unless lookup-only
+      (setq rankfun (if rank-function
+			(eval (macroexpand
+			       `(dictree--wrap-rankfun ,rank-function)))
+		      ;; rank-function defaults to comparison of the
+		      ;; sequences
+		      (eval (macroexpand
+			     `(dictree--wrap-rankfun
+			       (lambda (a b)
+				 (,(tstree-construct-sortfun '-)
+				  (car a) (car b)))))))))
+
+    ;; create the dictionary
     (setq dict
 	 (if lookup-only
-	     ;; if dict is lookup only, use insert-function since there's no
-	     ;; need to wrap data, and store it where tstree usually goes
-	     (list 'DICT (symbol-name name) filename
-		   autosave t insert-function t
-		   (make-hash-table :test 'equal))
-	   
-	   (list 'DICT (symbol-name name) filename autosave t
-		 (tstree-create '- insfun rankfun) nil
+	     ;; lookup-only dictionary
+	     (list 'DICT (symbol-name name) filename autosave t t
+		   nil insfun nil (make-hash-table :test 'equal)
+		   nil nil nil nil nil)
+
+	   ;; normal dictionary
+	   (list 'DICT (symbol-name name) filename autosave t nil
+		 (tstree-create '- insfun rankfun) insfun rankfun
 		 (if lookup-speed (make-hash-table :test 'equal) nil)
 		 lookup-speed
 		 (if complete-speed (make-hash-table :test 'equal) nil)
 		 complete-speed
 		 (if ordered-speed (make-hash-table :test 'equal) nil)
 		 ordered-speed)))
-    ;; add dictionary to loaded list
-    (unless unlisted (push dict dictree-loaded-list))
+
+    ;; store dictionary in variable NAME, add it to loaded list, and
+    ;; return it
+    (set name dict)
+    (unless unlisted
+      (push dict dictree-loaded-list)
+      (provide name))
     dict)
 )
 
@@ -468,51 +620,57 @@ disable autosaving."
 
 (defun dictree-create-type (name type &optional filename autosave
 			      lookup-speed complete-speed ordered-speed)
-  "Create an empty dictionary of type TYPE stored in variable NAME, and return
-it. Type can be one of dictionary, spell-check, lookup, or
-frequency. `dictree-create-type' is a simplified interface to `dictree-create'.
+  "Create an empty dictionary of type TYPE stored in variable
+NAME, and return it. Type can be one of dictionary, spell-check,
+lookup, or frequency. `dictree-create-type' is a simplified
+interface to `dictree-create'.
 
-The \"dictionary\" type is exactly like a normal, paper-based dictionary: it
-can associate arbitrary data with any word in the dictionary. Inserting data
-for a word will replace any existing data for that word. All SPEED arguments
-default to nil.
+The \"dictionary\" type is exactly like a normal, paper-based
+dictionary: it can associate arbitrary data with any word in the
+dictionary. Inserting data for a word will replace any existing
+data for that word. All SPEED arguments default to nil.
 
-A \"spell-check\" dictionary stores words, but can not associate any data with
-the words. It is appropriate when the dictionary will only be used for
-checking if a word is in the dictionary (e.g. for spell-checking). All SPEED
+A \"spell-check\" dictionary stores words, but can not associate
+any data with the words. It is appropriate when the dictionary
+will only be used for checking if a word is in the
+dictionary (e.g. for spell-checking). All SPEED arguments default
+to nil.
+
+A \"lookup\" dictionary is like a dictionary-type dictionary, but
+can only be used to look up words, not for more advanced
+searches (e.g. word completion). This has both speed and memory
+benefits. It is appropriate when the more advanced searches are
+not required. Any SPEED arguments are ignored.
+
+A \"frequency\" dictionary associates a number with each word in
+the dictionary. Inserting new data adds it to the existing
+data. It is appropriate, for instance, when storing
+word-frequencies\; the `dictree-complete-ordered' function can
+then be used to return the most likely completions. All SPEED
 arguments default to nil.
-
-A \"lookup\" dictionary is like a dictionary-type dictionary, but can only be
-used to look up words, not for more advanced searches (e.g. word
-completion). This has both speed and memory benefits. It is appropriate when
-the more advanced searches are not required. Any SPEED arguments are ignored.
-
-A \"frequency\" dictionary associates a number with each word in the
-dictionary. Inserting new data adds it to the existing data. It is
-appropriate, for instance, when storing word-frequencies\; the
-`dictree-complete-ordered' function can then be used to return the most likely
-completions. All SPEED arguments default to nil.
 
 See `dictree-create' for more details.
 
 
 Technicalities:
 
-For the \"dictionary\" type, INSERT-FUNCTION is set to \"replace\", and
-RANK-FUNCTION to string comparison of the words (not very useful, since the
-`dictree-complete' function already returns completions sorted alphabetically,
-and does it much more efficiently than `dictree-complete-ordered', but at least
-it will not cause errors!).
+For the \"dictionary\" type, INSERT-FUNCTION is set to
+\"replace\", and RANK-FUNCTION to string comparison of the
+words (not very useful, since the `dictree-complete' function
+already returns completions sorted alphabetically, and does it
+much more efficiently than `dictree-complete-ordered', but at
+least it will not cause errors!).
 
-For the \"spell-check\" type, INSERT-FUNCTION is set to a function that always
-returns t. RANK-FUNCTION is set to string comparison of the words.
+For the \"spell-check\" type, INSERT-FUNCTION is set to a
+function that always returns t. RANK-FUNCTION is set to string
+comparison of the words.
 
-For the \"lookup\" type, INSERT-FUNCTION is set to \"replace\", and
-LOOKUP-ONLY is set to t.
+For the \"lookup\" type, INSERT-FUNCTION is set to \"replace\",
+and LOOKUP-ONLY is set to t.
 
-For the \"frequency\" type, INSERT-FUNCTION sums the new and existing
-data. Nil is treated as 0. The RANK-FUNCTION is set to numerical
-\"greater-than\" comparison of the data."
+For the \"frequency\" type, INSERT-FUNCTION sums the new and
+existing data. Nil is treated as 0. The RANK-FUNCTION is set to
+numerical \"greater-than\" comparison of the data."
   
   (let (insfun rankfun lookup-only)
     ;; set arguments based on type
@@ -550,162 +708,212 @@ data. Nil is treated as 0. The RANK-FUNCTION is set to numerical
 
 
 
+(defun dictree-create-meta-dict (name dictlist &optional filename autosave
+				      lookup-speed complete-speed
+				      ordered-speed lookup-only
+				      combine-function rank-function
+				      unlisted)
+  "Create a meta-dictionary called NAME, based on dictionaries
+in DICTLIST.
 
-(defun dictree-insert-function (dict)
-  "Return the insertion function for dictionary DICT."
-  (dictree--insfun dict)
+COMBINE-FUNCTION is used to combine data from the dictionaries in
+DICTLIST. It is passed two cons cells, each of whose car contains
+data and whose cdr contains meta-data from the tree. Both cons
+cells contain data associated with the same key, but from
+different dictionaries. The function should return a cons cell
+containing the combined data and meta-data in the car and cdr
+respectively.
+
+The other arguments are as for `dictree-create'."
+
+    ;; a meta-dictionary is a list containing:
+  ;; ('DICT
+  ;;  name
+  ;;  filename
+  ;;  autosave flag
+  ;;  modified flag
+  ;;  lookup-only
+  ;;  tstree / nil (if lookup-only)
+  ;;  combine-function
+  ;;  rank-function / nil
+  ;;  lookup-hash
+  ;;  lookup-speed
+  ;;  complete-hash / nil
+  ;;  complete-speed / nil
+  ;;  ordered-hash / nil
+  ;;  ordered-speed / nil
+  ;;  dictlist)
+  (let (dict combfun rankfun)
+    
+    ;; wrap rank-function to deal with data wrapping
+    (setq combfun combine-function)
+    (when rank-function
+      (setq rankfun
+	    (eval (macroexpand
+		   `(dictree--wrap-rankfun ,rank-function)))))
+
+    ;; if any of the dictionaries in DICTLIST are lookup-only, the
+    ;; meta-dictionary has to be lookup-only
+    (mapc (lambda (dic)
+	    (setq lookup-only
+		  (or lookup-only (dictree--lookup-only dic))))
+	  dictlist)
+    
+;;     ;; make sure all dictionaries this meta-dict is based on are loaded
+;;     (dolist (dic dictlist) (require (dictree--name dic)))
+    
+    ;; create meta-dictionary
+    (setq dict
+	  (if lookup-only
+	      ;; lookup-only dictionary
+	      (list 'DICT (symbol-name name) filename autosave t t
+		    dictlist combfun nil
+		    (if lookup-speed (make-hash-table :test 'equal) nil)
+		    lookup-speed
+		    nil nil nil nil)
+	    ;; normal dictionary
+	    (list 'DICT (symbol-name name) filename autosave t nil
+		  dictlist combfun rankfun
+		  (if lookup-speed (make-hash-table :test 'equal) nil)
+		  lookup-speed
+		  (if complete-speed (make-hash-table :test 'equal) nil)
+		  complete-speed
+		  (if ordered-speed (make-hash-table :test 'equal) nil)
+		  ordered-speed)))
+    
+    ;; add meta-dictionary to lists of meta-dicts for all dictionaries it
+    ;; depends on
+    (mapc (lambda (dic) (nconc dic (list dict))) dictlist)
+    
+    ;; store dictionary in variable NAME, add it to loaded list, and
+    ;; return it
+    (set name dict)
+    (unless unlisted
+      (push dict dictree-loaded-list)
+      (provide name))
+    dict)
 )
 
 
 
-(defun dictree-rank-function (dict)
-  "Return the rank function for the dictionary DICT (note: returns nil if
-lookup-only is set for the dictionary)."
-  (dictree--rankfun dict)
-)
 
+(defun dictree-insert (dict key &optional data insert-function)
+  "Insert KEY and DATA into dictionary DICT.
+If KEY does not already exist, this creates it. How the data is
+inserted depends on the dictionary's insertion function \(see
+`dictree-create'\).
 
-
-(defun dictree-empty (dict)
-  "Return t if the dictionary DICT is empty, nil otherwise."
-  (if (dictree--lookup-only dict)
-      (= 0 (hash-table-count (dictree--lookup-hash dict)))
-    (tstree-empty (dictree--tstree dict)))
-)
-
-
-
-
-(defun dictree-insert (dict word &optional data insert-function)
-  "Insert WORD and DATA into dictionary DICT.
-If WORD does not already exist, this creates it. How the data is inserted
-depends on the dictionary's insertion function (see `dictree-create').
-
-The optional INSERT-FUNCTION over-rides the dictionary's own insertion
-function. It should take two arguments: the data DATA, and the data associated
-with WORD in the dictionary (nil if none already exists). It should return the
-data to insert."
-  ;; make sure WORD is a string
-  (when (not (stringp word))
-    (error "Wrong argument type stringp, %s" (prin1-to-string word)))
+The optional INSERT-FUNCTION over-rides the dictionary's own
+insertion function. It should take two arguments: the data DATA,
+and the data associated with KEY in the dictionary (nil if none
+already exists). It should return the data to insert."
+  ;; make sure SEQUENCE is a sequence
+  (when (not (sequencep key))
+    (error "Wrong argument type stringp, %s"
+	   (prin1-to-string key)))
   (when (not (dictree-p dict))
     (error "Wrong argument type dictree-p"))
   
-  (let ((insfun (if insert-function
-		    (eval (macroexpand `(dictree--wrap-insfun ,insert-function)))
-		  (dictree--insfun dict))))
-    ;; set the dictionary's modified flag
-    (dictree--set-modified dict t)
+  ;; if dictionary is a meta-dictionary, insert key into all the
+  ;; dictionaries it's based on
+  (if (dictree--meta-dict-p dict)
+      (mapc (lambda (dic)
+	      (dictree-insert dic key data insert-function))
+	    (dictree--dict-list dict))
     
-    ;; if dictionary is lookup-only, just insert the data in the lookup cache
-    (if (dictree--lookup-only dict)
-	(let ((lookup-hash (dictree--lookup-hash dict)))
-	  (puthash
-	   word (funcall insfun data (gethash word lookup-hash))
-	   lookup-hash))
-
+    
+    ;; otherwise, dictionary is a normal dictionary...
+    (let ((insfun (if insert-function
+		      (eval (macroexpand
+			     `(dictree--wrap-insfun ,insert-function)))
+		    (dictree--insfun dict)))
+	  newdata)
+      ;; set the dictionary's modified flag
+      (dictree--set-modified dict t)
       
-      ;; otherwise...
-      (let ((tstree (dictree--tstree dict))
-	    newdata)
+      ;; if dictionary is lookup-only, just insert the data in the
+      ;; lookup cache
+      (if (dictree--lookup-only dict)
+	  (let ((lookup-hash (dictree--lookup-hash dict)))
+	    (puthash key
+		     (setq newdata
+			   (funcall insfun data
+				    (gethash key lookup-hash)))
+		     lookup-hash))
 	
-        ;; insert word in dictionary's ternary search tree
-	(setq newdata (tstree-insert tstree word data insfun))
-	
-	
-        ;; synchronize the completion caches
-	(when (or (dictree--completion-speed dict) (dictree--ordered-speed dict))
-	  (let ((completion-hash (dictree--completion-hash dict))
-		(ordered-hash (dictree--ordered-hash dict))
-		(rankfun (dictree--rankfun dict))
-		str wrd cache cmpl maxnum)
-	    
-	    ;; have to check every possible substring that could be cached!
-	    (dotimes (i (1+ (length word)))
-	      (setq str (substring word 0 i))
+	;; otherwise...
+	(let ((tstree (dictree--tstree dict)))
+	  ;; insert key in dictionary's ternary search tree
+	  (setq newdata (tstree-insert tstree key data insfun))
+	  ;; update dictionary's caches
+	  (dictree-update-cache dict key newdata)
+	  ;; update cache's of any meta-dictionaries based on dict
+	  (mapc (lambda (dic)
+		  (dictree-update-cache dic key newdata))
+		(dictree--meta-dict-list dict))))
 
-	      ;; synchronize the completion hash, if it exists
-	      (when (and (dictree--completion-speed dict)
-			 (setq cache (gethash str completion-hash)))
-		(setq cmpl (dictree--cache-completions cache))
-		(setq maxnum (dictree--cache-maxnum cache))
-		;; if word is already in the completion list, it doesn't need
-		;; updating, otherwise update it from the tree
-		;; (Note: we could instead add word to the list and re-sort,
-		;;  but it's probably not worth it)
-		(unless (assoc word cmpl)
-		  (setcar cache
-			  (tstree-complete (dictree--tstree dict) str maxnum))))
-	      
-	      
-	      ;; synchronize the ordered completion hash, if it exists
-	      (when (and (dictree--ordered-speed dict)
-			 (setq cache (gethash str ordered-hash)))
-		(setq cmpl (dictree--cache-completions cache))
-		(setq maxnum (dictree--cache-maxnum cache))
-		(setq wrd (substring word i))
-		(cond
-		 
-		 ;; if word is in the completion list...
-		 ((assoc wrd cmpl)
-		  ;; re-sort the list
-		  (dictree--set-cache-completions cache (sort cmpl rankfun))
-		  (setq cmpl (dictree--cache-completions cache))
-		  ;; if word is now at the end of the list, we've no choice
-		  ;; but to update from the tree
-		  (when (equal (caar (last cmpl)) wrd)
-		    (dictree--set-cache-completions
-		     cache (tstree-complete-ordered tstree str maxnum
-						    nil rankfun))))
-		 
-		 ;; if word isn't in the completion list...
-		 (t
-		  ;; add word to the end of the list and re-sort
-		  (setcdr (last cmpl) (list (cons wrd newdata)))
-		  (dictree--set-cache-completions cache (sort cmpl rankfun))
-		  (setq cmpl (dictree--cache-completions cache))
-		  ;; remove excess completions
-		  (when (> (length cmpl) maxnum)
-		    (setcdr (nthcdr (1- maxnum) cmpl) nil)))))
-	      )))
-	
-	;; return the new data value
-	(dictree--get-data newdata))))
+      ;; return the new data
+      (dictree--get-data newdata)))
 )
 
 
 
 (defun dictree-lookup (dict word)
-  "Return the data associated with WORD in dictionary DICT, or nil if WORD is
-not in the dictionary.
+  "Return the data associated with WORD in dictionary DICT,
+or nil if WORD is not in the dictionary.
 
-Note: this will not distinguish between a non-existent WORD and a WORD whose
-data is nil. \(\"spell-check\" type dictionaries created using
-`dictree-create-type' store t as the data for every word to avoid this problem)
-Use `dictree-member-p' to distinguish non-existent words from nil data."
+Note: this will not distinguish between a non-existent WORD and a
+WORD whose data is nil. \(\"spell-check\" type dictionaries
+created using `dictree-create-type' store t as the data for every
+word to avoid this problem) Use `dictree-member-p' to distinguish
+non-existent words from nil data."
   
   ;; first check the lookup hash for the word
-  (let ((data (if (dictree--lookup-speed dict)
-		  (gethash word (dictree--lookup-hash dict))
-		nil))
+  (let ((data (when (dictree--lookup-speed dict)
+		(gethash word (dictree--lookup-hash dict))))
+	(combfun (when (dictree--meta-dict-p dict)
+		   (dictree--combfun dict)))
 	time)
     
-    ;; if it wasn't in the lookup hash and the dictionary isn't lookup-only,
-    ;; search in the ternary search tree
-    (unless (or data (dictree--lookup-only dict))
-      ;; time the lookup
-      (let (time)
+    ;; if it wasn't in the lookup hash...
+    (unless data
+      (cond
+       
+       ;; if the dictionary is lookup-only and is a meta-dictionary,
+       ;; search in the dictionaries it's based on
+       ((and (dictree--lookup-only dict) (dictree--meta-dict-p dict))
 	(setq time (float-time))
-	(setq data (tstree-member (dictree--tstree dict) word))
+	(mapc (lambda (dic)
+		(setq data (funcall (dictree--combfun dict) data
+				    (dictree-lookup dic word))))
+	      (dictree--dict-list dict))
 	(setq time (- (float-time) time))
 	
-        ;; if the lookup was slower than the dictionary's lookup speed, add it
-        ;; to the lookup hash and set the modified flag
+        ;; if the lookup was slower than the dictionary's lookup speed,
+        ;; add it to the lookup hash and set the modified flag
 	(when (and (dictree--lookup-speed dict)
 		   (or (eq (dictree--lookup-speed dict) t)
 		       (> time (dictree--lookup-speed dict))))
 	  (dictree--set-modified dict t)
-	  (puthash word data (dictree--lookup-hash dict)))))
+	  (puthash word data (dictree--lookup-hash dict))))
+       
+
+       ;; if nothing was found in the cache, and the dictionary is not
+       ;; lookup-only, look in the ternary search tree
+       ((not (dictree--lookup-only dict))
+	;; time the lookup
+	(setq time (float-time))
+	(setq data (tstree-member (dictree--tstree dict) word combfun))
+	(setq time (- (float-time) time))
+	
+	;; if the lookup was slower than the dictionary's lookup speed,
+	;; add it to the lookup hash and set the modified flag
+	(when (and (dictree--lookup-speed dict)
+		   (or (eq (dictree--lookup-speed dict) t)
+		       (> time (dictree--lookup-speed dict))))
+	  (dictree--set-modified dict t)
+	  (puthash word data (dictree--lookup-hash dict))))
+       ))
     
     ;; return the data
     (dictree--get-data data))
@@ -730,7 +938,8 @@ in dictionary DICT."
   (if (dictree--lookup-only dict)
       (error "Lookup-only dictionaries can't contain meta-data")
     ;; otherwise, set word's meta-data
-    (dictree--set-metadata (tstree-member (dictree--tstree dict) word) meta-data))
+    (dictree--set-metadata
+     (tstree-member (dictree--tstree dict) word) meta-data))
 )
 
 
@@ -751,6 +960,8 @@ non-existent words."
   (let ((data (if (dictree--lookup-speed dict)
 		  (gethash word (dictree--lookup-hash dict))
 		nil))
+	(combfun (when (dictree--meta-dict-p dict)
+		   (dictree--combfun dict)))
 	time)
     
     ;; if it wasn't in the lookup hash, search in the ternary search tree
@@ -758,11 +969,11 @@ non-existent words."
       ;; time the lookup
       (let (time)
 	(setq time (float-time))
-	(setq data (tstree-member (dictree--tstree dict) word))
+	(setq data (tstree-member (dictree--tstree dict) word combfun))
 	(setq time (- (float-time) time))
 	
-        ;; if the lookup was slower than the dictionary's lookup speed, add it
-        ;; to the lookup hash and set the modified flag
+        ;; if the lookup was slower than the dictionary's lookup speed,
+        ;; add it to the lookup hash and set the modified flag
 	(when (and (dictree--lookup-speed dict)
 		   (or (eq (dictree--lookup-speed dict) t)
 		       (> time (dictree--lookup-speed dict))))
@@ -778,14 +989,23 @@ non-existent words."
 
 (defun dictree-member-p (dict word)
   "Return t if WORD is in dictionary DICT, nil otherwise."
-  
-  ;; if dictionary is lookup-only, look in lookup hash and use dummy variable
-  ;; to distinguish non-existent words from those with nil data
-  (if (dictree--lookup-only dict)
-      (if (eq (gethash word (dictree--lookup-hash dict) 'not-in-here)
-	      'not-in-here) nil t)
-    ;; otherwise look in the ternary search tree
-    (tstree-member-p (dictree--tstree dict) word))
+
+  ;; if dictionary is a meta-dictionary, look in dictionaries it's based on
+  (cond
+   ((dictree--meta-dict-p dict)
+    (catch 'found
+      (dolist (dic (dictree--dict-list dict))
+	(when (dictree-member-p dic word) (throw 'found t)))))
+   
+   ;; lookup-only, look in lookup hash and use dummy variable to
+   ;; distinguish non-existent words from those with nil data
+   ((dictree--lookup-only dict)
+    (if (eq (gethash word (dictree--lookup-hash dict) 'not-in-here)
+	    'not-in-here)
+	nil t))
+   
+   ;; otherwise look in the ternary search tree
+   (t (tstree-member-p (dictree--tstree dict) word)))
 )
 
 
@@ -796,23 +1016,28 @@ non-existent words."
 
 
 
-(defun dictree-map (function dict)
-  "Apply FUNCTION to all entries in dictionary DICT, for side-effects only.
+(defun dictree-map (function dict &optional type)
+  "Apply FUNCTION to all entries in dictionary DICT,
+for side-effects only.
 
-FUNCTION will be passed two arguments: a word from the
-dictionary, and the data associated with that word. It is safe to
-assume the dictionary entries will be traversed in alphabetical
-order."
+FUNCTION will be passed two arguments: a key of type
+TYPE ('string, 'vector, or 'list, defaulting to 'vector) from the
+dictionary, and the data associated with that key. It is safe to
+assume the dictionary entries will be traversed in
+\"alphabetical\" order.
+
+If TYPE is 'string, it must be possible to apply the function
+`string' to the type used to reference data in the dictionary."
   
   (if (dictree--lookup-only dict)
       (maphash function (dictree--lookup-hash dict))
-    ;; need to "rename" `function' or we hit a nasty dynamic scoping problem,
-    ;; since `tstree-map' also binds the symbol `function'
-    (let ((dictree-map-function function))
+;;     ;; need to "rename" `function' or we hit a nasty dynamic scoping
+;;     ;; problem, since `tstree-map' also binds the symbol `function' ;;
+;;     ;; (let ((dictree-map-function function))
       (tstree-map
-       (lambda (word data)
-	 (funcall dictree-map-function word (dictree--get-data data)))
-       (dictree--tstree dict) t)))
+       `(lambda (word data)
+	  (funcall ,function word (dictree--get-data data)))
+       (dictree--tstree dict) type));)
 )
 
 
@@ -832,8 +1057,8 @@ order."
 		    (cons (,function word data) result))
 		 (dictree--lookup-hash dict))
 	result)
-    ;; need to "rename" `function' or we hit a nasty dynamic scoping problem,
-    ;; since `tstree-map' also binds the symbol `function'
+    ;; need to "rename" `function' or we hit a nasty dynamic scoping
+    ;; problem, since `tstree-map' also binds the symbol `function'
     (let ((dictree-map-function function))
       (tstree-map
        (lambda (word data)
@@ -847,37 +1072,60 @@ order."
   "Return the number of entries in dictionary DICT."
   (interactive (list (read-dict "Dictionary: ")))
 
+  ;; lookup-only
   (if (dictree--lookup-only dict)
-      (hash-table-size dict)
+      (if (not (dictree--meta-dict-p dict))
+	  ;; normal dictionary
+	  (hash-table-size (dictree--lookup-hash dict))
+	;; meta-dictionary
+	(let ((count 0))
+	  (mapc (lambda (dic) (setq count (+ count (dictree-size dic))))
+		(dictree--dict-list dict))
+	  count))
+    ;; non lookup-only
     (let ((count 0))
       (tstree-map (lambda (&rest dummy) (setq count (1+ count)))
 		  (dictree--tstree dict))
       (when (interactive-p)
-	(message "Dictionary %s contains %d entries" (dictree--name dict) count))
+	(message "Dictionary %s contains %d entries"
+		 (dictree--name dict) count))
       count))
 )
 
 
 
-(defun dictree-complete (dict string &optional maxnum all filter no-cache)
-  "Return an alist containing all completions of STRING found in
-dictionary DICT, along with their associated data, in alphabetial
-order. If no completions are found, return nil.
+(defun dictree-complete
+  (dict sequence &optional maxnum all combine-function filter no-cache)
+  "Return an alist containing all completions of SEQUENCE
+found in dictionary DICT, along with their associated data, in
+the order defined by the dictionary's comparison function (see
+`dictree-create'). If no completions are found, return nil.
 
-DICT can also be a list of dictionaries, in which case
-completions are sought in all dictionaries in the list, as though
-they were one large dictionary.
-
-STRING can be a single string or a list of strings. If a list is
-supplied, completions of all elements of the list are returned.
+SEQUENCE can be a single sequence or a list of sequences. If a
+list is supplied, completions of all elements in the list are
+returned, merged together in a single alist.
 
 The optional numerical argument MAXNUM limits the results to the
 first MAXNUM completions. If it is absent or nil, all completions
 are included in the returned alist.
 
-Normally, only the remaining characters needed to complete STRING
-are returned. If the optional argument ALL is non-nil, the entire
-completion is returned.
+DICT can also be a list of dictionaries, in which case
+completions are sought in all dictionaries in the list and the
+results are merged together, keeping the first MAXNUM. Note that
+if a key appears in more than one dictionary, the returned alist
+may contain that key more than once. To have multiple
+dictionaries treated as a single, combined dictionary, they
+should be combined into a meta-dictionary. See
+`dict-create-metadict'.
+
+Normally, only the remaining characters needed to complete
+SEQUENCE are returned. If the optional argument ALL is non-nil,
+the entire completion is returned.
+
+The optional COMBINE-FUNCTION argument overrides a
+meta-dictionary's default combine-function. It is ignored if none
+of the dictionaries in DICT are meta-dictionaries. See
+`dict-create-metadict' for details.
 
 The FILTER argument sets a filter function for the
 completions. If supplied, it is called for each possible
@@ -887,141 +1135,156 @@ included in the results.
 
 If the optional argument NO-CACHE is non-nil, it prevents caching
 of the result."
+
+  ;; ----- sort out arguments ------
   
-  (let* ((dictlist (if (dictree-p dict) (list dict) dict))
-	 dic)
-    (cond
+  ;; wrap dict in a list if necessary
+  (when (dictree-p dict) (setq dict (list dict)))
+  
+  ;; wrap sequence in a list if necessary
+  ;; FIXME: this will fail if SEQUENCE is a list, and tree's reference
+  ;;        type is itself a sequence (actually, there might be no way
+  ;;        to fully fix this...)
+  (when (or (atom sequence)
+	    (and (listp sequence) (not (sequencep (car sequence)))))
+    (setq sequence (list sequence)))
 
-     ;; if a filter was supplied, look in the ternary search tree since we
-     ;; don't cache filtered searches
-     (filter
-      ;; redefine filter to deal with data wrapping
-      (setq filter `(lambda (str data) (,filter str (dictree--get-data data))))
-      
-      (let (treelist)
-	(while dictlist
-	  (setq dic (pop dictlist))
-	  ;; better check that none of the dictionaries in the list are
-	  ;; lookup-only
-	  (when (dictree--lookup-only dic)
-	    (error "Dictionary is lookup-only. Completion disabled."))
-	  (setq treelist (append (dictree--tstree dic) treelist)))
-	;; search the ternary search tree
-	(tstree-complete treelist string maxnum all filter)))
-     
+  
+  ;; redefine filter to deal with data wrapping
+  (when filter
+    (setq filter (eval (macroexpand `(dictree--wrap-filter ,filter)))))
+  
+  
+  ;; ----- search for completions -----
+  
+  (let (completions cmpl cache time speed combfun)
+    ;; search each dictionary in the list
+    (dolist (dic dict)
+      ;; throw a wobbly if dictionary is lookup-only
+      (when (dictree--lookup-only dic)
+	(error "Dictionary is lookup-only; completion disabled"))
+      ;; get meta-dictionary's combine function
+      (when (dictree--meta-dict-p dic)
+	(if combine-function
+	    (setq combfun combine-function)
+	  (setq combfun (dictree--combfun dic))))
+      ;; complete each sequence in the list
+     (dolist (seq sequence)
+	(cond
+	 
+	 ;; If FILTER or COMBINE-FUNCTION was supplied, look in ternary
+	 ;; search tree since we don't cache these custom searches.
+	 ((or filter combine-function)
+	  (setq cmpl
+		(tstree-complete (dictree--tstree dic) seq maxnum
+				 combfun filter)))
+	 
+	 
+	 ;; if there's a cached result with enough completions, use it
+	 ((and (setq cache (if (dictree--completion-speed dic)
+			       (gethash seq (dictree--completion-hash dic))
+			     nil))
+	       (or (null (dictree--cache-maxnum cache))
+		   (and maxnum
+			(<= maxnum (dictree--cache-maxnum cache)))))
+	  (setq cmpl (dictree--cache-completions cache))
+	  ;; drop any excess cached completions
+	  (when (and maxnum (> (length cmpl) maxnum))
+	    (setcdr (nthcdr (1- maxnum) cmpl) nil)))
+	 
+	 
+	 ;; If nothing was in the cache or the cached result didn't
+	 ;; contain enough completions, look in the ternary search tree
+	 ;; and time it.
+	 (t
+	  (setq time (float-time))
+	  (setq cmpl
+		(tstree-complete (dictree--tstree dic) seq maxnum combfun))
+	  (setq time (- (float-time) time))
+	  ;; If the completion function was slower than the dictionary's
+	  ;; completion speed, add the results to the completion hash and
+	  ;; set the dictionary's modified flag.
+	  (when (and (not no-cache)
+		     (setq speed (dictree--completion-speed dic))
+		     (or (eq speed t) (> time speed)))
+	    (dictree--set-modified dic t)
+	    (puthash seq (dictree--cache-create cmpl maxnum)
+		     (dictree--completion-hash dic)))))
 
-     ;; if no filter was supplied...
-     (t
-      (let (completions
-	    strlist str
-	    cache cmpl
-	    time speed)
-	;; search each dictionary in the list
-	(while dictlist
-	  (setq dic (pop dictlist))
-	  ;; throw a wobbly if dictionary is lookup-only
-	  (when (dictree--lookup-only dic)
-	    (error "Dictionary is lookup-only. Completion disabled."))
-	  
-	  ;; search each string in the list
-	  (setq strlist (if (stringp string) (list string) string))
-	  (while strlist
-	    (setq str (pop strlist))
-	    
-	    ;; look in completion cache first
-	    (setq cache (if (dictree--completion-speed dic)
-			    (gethash str (dictree--completion-hash dic))
-			  nil))
-	    
-	    ;; if we've found a cached result with enough completions...
-	    (if (and cache (or (null (dictree--cache-maxnum cache))
-			       (and (not (null maxnum))
-				    (<= maxnum (dictree--cache-maxnum cache)))))
-		(progn
-		  (setq cmpl (dictree--cache-completions cache))
-		  ;; drop any excess cached completions
-		  (when (and maxnum (> (length cmpl) maxnum))
-		    (setcdr (nthcdr (1- maxnum) cmpl) nil)))
-	      
-	      ;; if nothing was in the cache or the cached result contained
-	      ;; fewer completions than asked for, look in the ternary search
-	      ;; tree and time it
-	      (setq time (float-time))
-	      (setq cmpl (tstree-complete (dictree--tstree dic) str maxnum))
-	      (setq time (- (float-time) time))
-	      ;; if the completion function was slower than the dictionary's
-	      ;; completion speed, add the results to the completion hash and
-	      ;; set the dictionary's modified flag
-	      (when (and (not no-cache)
-			 (setq speed (dictree--completion-speed dic))
-			 (or (eq speed t) (> time speed)))
-		(dictree--set-modified dic t)
-		(puthash str (dictree--cache-create cmpl maxnum)
-			 (dictree--completion-hash dic))))
-	    
-	    ;; unwrap data, and add string to the fronts of the completions if
-	    ;; ALL is set
-	    ;;  and add string to the fronts of the completions if ALL is set
-	    (when all
-	      (setq cmpl
-		    (mapcar (lambda (s) (cons (concat str (car s)) (cdr s)))
-			    cmpl)))
-	    ;; merge the cached completions with those already found
-	    (setq completions
-		  (merge 'list completions cmpl
-			 (lambda (a b) (string< (car a) (car b)))))
-	    ;; drop any excess completions
-	    (when (and maxnum (> (length completions) maxnum))
-	      (setcdr (nthcdr (1- maxnum) completions) nil))
-	    ))
-	;; return the completions list, unwrapping the data
-	(mapcar (lambda (c) (cons (car c) (dictree--get-data (cdr c))))
-		completions)
-	))))
+
+	;; ----- construct completion list -----
+	
+	;; drop prefix from front of the completions if ALL is not set
+	(unless all
+	  (setq cmpl (mapcar
+		      (lambda (s)
+			(cons (dictree--subseq (car s) (length seq))
+			      (cdr s)))
+		      cmpl)))
+	;; merge the cached completions with those already found
+	(let ((sortfun `(lambda (a b)
+			  (,(tstree-construct-sortfun
+			     (tstree--tree-cmpfun (dictree--tstree dic)))
+			   (car a) (car b)))))
+	  (setq completions (dictree--merge completions cmpl sortfun))
+	  ;; drop any excess completions
+	  (when (and maxnum (> (length completions) maxnum))
+	    (setcdr (nthcdr (1- maxnum) completions) nil)))
+	))
+    
+    
+    ;; return the completions list, unwrapping the data
+    (mapcar (lambda (c) (cons (car c) (dictree--get-data (cdr c))))
+	    completions))
 )
-
-
 
 
 
 (defun dictree-complete-ordered
-  (dict string &optional maxnum all rank-function filter no-cache)
-  "Return an alist containing all completions of STRING found in
-dictionary DICT, along with their associated data. If no
-completions are found, return nil.
+  (dict sequence &optional maxnum all rank-function combine-function
+	                   filter no-cache)
+  "Return an alist containing all completions of SEQUENCE
+found in dictionary DICT, along with their associated data,
+sorted according to the rank function. If no completions are found,
+return nil.
 
 Note that `dictree-complete' is significantly more efficient than
-`dictree-complete-ordered', especially when a maximum number of
-completions is specified. Always use `dictree-complete' when you
-don't care about the ordering of the completions, or you need the
-completions ordered alphabetically.
+`dictree-complete-ordered', especially when a MAXNUM is
+specified. Always use `dictree-complete' when you don't care
+about the ordering of the completions, or you need the
+completions ordered according to the dictionary's comparison
+function (see `dictree-create').
 
-DICT can also be a list of dictionaries, in which case
-completions are sought in all trees in the list. If RANK-FUCTION
-is ot specified, the rank function of the first dictionary in the
-list is used. All the dictionaries' rank functions had better be
-compatible, otherwise at best you will get unexpected results, at
-worst errors.
-
-STRING must either be a single string, or a list of strings. If a
-list is supplied, completions of all elements of the list are
-included in the returned alist.
+SEQUENCE can be a single sequence or a list of sequences. If a
+list is supplied, completions of all elements in the list are
+returned, merged together in a single alist.
 
 The optional numerical argument MAXNUM limits the results to the
-\"best\" MAXNUM completions. If nil, all completions are
-returned.
+\"best\" MAXNUM completions. If it is absent or nil, all
+completions are included in the returned alist.
 
-Normally, only the remaining characters needed to complete STRING
-are returned. If the optional argument ALL is non-nil, the entire
-completion is returned.
+DICT can also be a list of dictionaries, in which case
+completions are sought in all dictionaries in the list and the
+results are merged together, keeping the \"best\" MAXNUM. Note
+that if a key appears in more than one dictionary, the returned
+alist may contain that key more than once. To have multiple
+dictionaries treated as a single, combined dictionary, they
+should be combined into a meta-dictionary. See
+`dict-create-metadict'.
+
+Normally, only the remaining characters needed to complete
+SEQUENCE are returned. If the optional argument ALL is non-nil,
+the entire completion is returned.
 
 The optional argument RANK-FUNCTION over-rides the dictionary's
-default rank function. It should take two arguments, each a cons
-whose car is a string referencing data in the tree, and whose cdr
-is the data at that reference. It should return non-nil if the
-first argument is \"better than\" the second, nil otherwise. The
+default rank function (see `dictree-create' for details). The
 elements of the returned list are sorted according to this
 rank-function, in descending order.
+
+The optional COMBINE-FUNCTION argument overrides a
+meta-dictionary's default combine-function. It is ignored if none
+of the dictionaries in DICT are meta-dictionaries. See
+`dict-create-metadict' for details.
 
 The FILTER argument sets a filter function for the
 completions. If supplied, it is called for each possible
@@ -1031,104 +1294,112 @@ included in the results.
 
 If the optional argument NO-CACHE is non-nil, it prevents caching
 of the result."
-  
-  (let ((dictlist (if (dictree-p dict) (list dict) dict))
-	dic rankfun)
-    (cond
 
-     ;; if the default rank function has been over-ridden or a filter
-     ;; supplied, look in the ternary search tree since we don't cache
-     ;; non-default rank functions or filtered searches
-     ((or rank-function filter)
-      ;; redefine the rank function and filter to deal with data wrapping
-      (setq rankfun (eval (macroexpand `(dictree--wrap-rankfun ,rank-function))))
-      (setq filter (eval (macroexpand `(dictree--wrap-filter ,filter))))
-      
-      (let (treelist)
-	(while dictlist
-	  (setq dic (pop dictlist))
-	  ;; better check that none of the dictionaries in the list are
-	  ;; lookup-only
-	  (when (dictree--lookup-only dic)
-	    (error "Dictionary is lookup-only. Completion disabled."))
-	  (setq treelist (append (dictree--tstree dic) treelist)))
-	;; search the ternary search tree
-	(tstree-complete-ordered treelist string maxnum all
-				 rankfun filter)))
-     
-     
-     ;; if we're using the dictionary's default rank-function...
-     ;; (Note: we use the rank function of first dict in list, and hope it's
-     ;;        compatible with the data in the other dictionaries)
-     (t
-      (let ((rankfun (dictree--rankfun (car dictlist)))
-	     completions
-	     strlist str
-	     cache cmpl
-	     time speed)
-	
-	;; search each dictionary in the list
-	(while dictlist
-	  (setq dic (pop dictlist))
-          ;; throw a wobbly if dictionary is lookup-only
-	  (when (dictree--lookup-only dic)
-	    (error "Dictionary is lookup-only. Completion disabled."))
-	  
-          ;; search each string in the list
-	  (setq strlist (if (stringp string) (list string) string))
-	  (while strlist
-	    (setq str (pop strlist))
+  (let (rankfun combfun completions seq cmpl time speed cache)
+    ;; wrap dict in a list if necessary
+    (when (dictree-p dict) (setq dict (list dict)))
 
-	    
-	    ;; look in completion cache first
-	    (setq cache (if (dictree--ordered-speed dic)
-			    (gethash str (dictree--ordered-hash dic))
-			  nil))
-	    
-	    ;; if we've found a cached result with enough completions...
-	    (if (and cache (or (null (dictree--cache-maxnum cache))
-			       (and (not (null maxnum))
-				    (<= maxnum (dictree--cache-maxnum cache)))))
-		(progn
-		  (setq cmpl (dictree--cache-completions cache))
-	          ;; drop any excess cached completions
-		  (when (and maxnum (> (length cmpl) maxnum))
-		    (setcdr (nthcdr (1- maxnum) cmpl) nil)))
-	      
-	      ;; if nothing was in the cache or the cached result didn't
-	      ;; contain enough completions, search tree and time the search
-	      (setq time (float-time))
-	      (setq cmpl (tstree-complete-ordered (dictree--tstree dic)
-						  str maxnum nil rankfun))
-	      (setq time (- (float-time) time))
-	      ;; if the completion function was slower than the dictionary's
-	      ;; completion speed, add the results to the completion hash and
-	      ;; set the dictionary's modified flag
-	      (when (and (not no-cache)
-			 (setq speed (dictree--ordered-speed dic))
-			 (or (eq speed t) (> time speed)))
-		(dictree--set-modified dic t)
-		(puthash str (dictree--cache-create cmpl maxnum)
-			 (dictree--ordered-hash dic))))
-	    
-	    ;;  and add string to the fronts of the completions if ALL is set
-	    (when all
-	      (setq cmpl
-		    (mapcar (lambda (s) (cons (concat str (car s)) (cdr s)))
-			    cmpl)))
-	    ;; merge the cached completions with those already found
-	    (setq completions (merge 'list completions cmpl rankfun))
-	    ;; drop any excess completions
-	    (when (and maxnum (> (length completions) maxnum))
-	      (setcdr (nthcdr (1- maxnum) completions) nil))
-	    ))
+    ;; ----- sort out arguments -----
+    
+    ;; wrap sequence in a list if necessary
+    ;; FIXME: this will fail if SEQUENCE is a list, and tree's reference
+    ;;        type is itself a sequence (actually, there might be no way
+    ;;        to fully fix this...)
+    (when (or (atom sequence)
+	      (and (listp sequence) (not (sequencep (car sequence)))))
+      (setq sequence (list sequence)))
+    
+    (if rank-function
+	;; redefine supplied rank-function to deal with data wrapping
+	(setq rankfun
+	      (eval (macroexpand `(dictree--wrap-rankfun ,rank-function))))
+      ;; Note: we default to the rank function of first dict in list, and
+      ;;       hope it's compatible with the data in the other
+      ;;       dictionaries
+      (setq rankfun (dictree--rankfun (car dict))))
+    
+    ;; redefine filter to deal with data wrapping
+    (when filter
+      (setq filter (eval (macroexpand `(dictree--wrap-filter ,filter)))))
+    
+
+    ;; ----- search for completions -----
+    
+    ;; search each dictionary in the list
+    (dolist (dic dict)
+      ;; throw a wobbly if dictionary is lookup-only
+      (when (dictree--lookup-only dic)
+	(error "Dictionary is lookup-only; completion disabled"))
+      ;; get meta-dictionary's combine function
+      (when (dictree--meta-dict-p dic)
+	(if combine-function
+	    (setq combfun combine-function)
+	  (setq combfun (dictree--combfun dic))))
+      ;; complete each sequence in the list
+      (dolist (seq sequence)
+	(cond
+	 
+	 ;; If the default rank-function or combine-function have been
+	 ;; over-ridden or a filter supplied, look in the ternary search
+	 ;; tree since we don't cache these non-default searches.
+	 ((or rank-function filter combine-function)
+	  (setq cmpl
+		(tstree-complete-ordered (dictree--tstree dic) sequence maxnum
+					 rankfun combfun filter)))
+	 
+	 
+	 ;; if there's a cached result with enough completions, use it
+	 ((and (setq cache (if (dictree--ordered-speed dic)
+			       (gethash seq (dictree--ordered-hash dic))
+			     nil))
+	       (or (null (dictree--cache-maxnum cache))
+		   (and maxnum
+			(<= maxnum (dictree--cache-maxnum cache)))))
+	  (setq cmpl (dictree--cache-completions cache))
+	  ;; drop any excess cached completions
+	  (when (and maxnum (> (length cmpl) maxnum))
+	    (setcdr (nthcdr (1- maxnum) cmpl) nil)))
+	 
+	 
+	 ;; If nothing was in the cache or the cached result didn't contain
+	 ;; enough completions, search tree and time the search.
+	 (t
+	  (setq time (float-time))
+	  (setq cmpl (tstree-complete-ordered (dictree--tstree dic)
+					      seq maxnum rankfun combfun))
+	  (setq time (- (float-time) time))
+	  ;; If the completion function was slower than the dictionary's
+	  ;; completion speed, add the results to the completion cache and
+	  ;; set the dictionary's modified flag.
+	  (when (and (not no-cache)
+		     (setq speed (dictree--ordered-speed dic))
+		     (or (eq speed t) (> time speed)))
+	    (dictree--set-modified dic t)
+	    (puthash seq (dictree--cache-create cmpl maxnum)
+		     (dictree--ordered-hash dic)))))
 	
-        ;; return the completions list, unwrapping the data
-	(mapcar (lambda (c) (cons (car c) (dictree--get-data (cdr c))))
-		completions)
-	))))
+	
+	;; ----- construct completion list -----
+	
+	;; drop prefix from front of the completions if ALL is not set
+	(unless all
+	  (setq cmpl (mapcar
+		      (lambda (s)
+			(cons (dictree--subseq (car s) (length seq))
+			      (cdr s)))
+		      cmpl)))
+	;; merge the cached completions with those already found
+	(setq completions (dictree--merge completions cmpl rankfun))
+	;; drop any excess completions
+	(when (and maxnum (> (length completions) maxnum))
+	  (setcdr (nthcdr (1- maxnum) completions) nil))
+	))
+    
+    
+    ;; return the completions list, unwrapping the data
+    (mapcar (lambda (c) (cons (car c) (dictree--get-data (cdr c))))
+	    completions))
 )
-
 
 
 
@@ -1173,8 +1444,8 @@ lisp expression that has side-effects."
       (set-buffer buff)
       (insert-file-contents file)
       
-      ;; insert the words starting from the median to ensure a well-balanced
-      ;; tree
+      ;; insert the words starting from the median to ensure a reasonably
+      ;; well-balanced tree
       (let* ((lines (count-lines (point-min) (point-max)))
 	     (midpt (+ (/ lines 2) (mod lines 2)))
 	     entry)
@@ -1183,7 +1454,8 @@ lisp expression that has side-effects."
 	(when (setq entry (dictree-read-line))
 	  (dictree-insert dict (car entry) (nth 1 entry))
 	  (dictree-set-meta-data dict (car entry) (nth 2 entry)))
-	(message "Inserting words in %s...(1 of %d)" (dictree--name dict) lines)
+	(message "Inserting words in %s...(1 of %d)"
+		 (dictree--name dict) lines)
         ;; insert words successively further away from the median in both
         ;; directions
 	(dotimes (i (1- midpt))
@@ -1238,6 +1510,40 @@ line is in wrong format."
 
 
 
+(defun dictree-save-modified (&optional dict ask)
+  "Save all modified dictionaries that have a non-nil autosave flag.
+
+If optional argument DICT is a list of dictionaries or a single
+dictionary, only save those (even if their autosave flags are not
+set). If DICT is non-nil but not a list of dictionaries, save all
+dictionaries, irrespective of their autosave flag. Interactively,
+this can be set by supplying a prefix argument.
+
+If optional argument ASK is non-nil, ask for confirmation before
+saving. Interactively, ASK is the prefix argument."
+  (interactive "P")
+
+  ;; sort out DICT argument
+  (cond
+   ((dictree-p dict) (setq dict (list dict)))
+   ((and (listp dict) (dictree-p (car dict))))
+   (dict (setq dict 'all)))
+  
+  ;; For each dictionary in list / loaded dictionary, check if dictionary
+  ;; has been modified. If so, save it if autosave is on or if saving all
+  (dolist (dic (if (or (null dict) (eq dict 'all))
+		    dictree-loaded-list
+		  dict))
+    (when (and (dictree--modified dic)
+	       (or (eq dict 'all) (dictree--autosave dic))
+	       (or (not ask)
+		   (y-or-n-p (format "Save modified dictionary %s? "
+				     (dictree--filename dic)))))
+      (dictree-save dic)
+      (dictree--set-modified dic nil)))
+)
+
+
 
 (defun dictree-save (dict)
   "Save dictionary DICT to it's associated file.
@@ -1249,7 +1555,8 @@ Use `dictree-write' to save to a different file."
     ;; if dictionary has no associated file, prompt for one
     (unless (and filename (> (length filename) 0))
       (setq filename
-	    (read-file-name (format "Save %s to file: " (dictree--name dict)))))
+	    (read-file-name (format "Save %s to file: "
+				    (dictree--name dict)))))
     
     ;; if filename is blank, don't save
     (if (string= filename "")
@@ -1257,7 +1564,6 @@ Use `dictree-write' to save to a different file."
       ;; otherwise write dictionary to file without requiring confirmation
       (dictree-write dict filename t)))
 )
-
 
 
 
@@ -1277,12 +1583,7 @@ and OVERWRITE is the prefix argument."
 		     (read-file-name "File to write to: ")
 		     current-prefix-arg))
 
-  (let* (dictname  ; saved dictionary name is constructed from the filename
-	 (autosave (dictree--autosave dict))
-	 (lookup-only (dictree--lookup-only dict))
-	 lookup-speed completion-speed ordered-speed
-	 tmpdict lookup-alist completion-alist ordered-alist
-	 hashcode buff tmpfile)
+  (let (dictname buff tmpfile)
     
     ;; add .el(c) extension to the filename if not already there
     (if uncompiled
@@ -1290,156 +1591,47 @@ and OVERWRITE is the prefix argument."
 	  (setq filename (concat filename ".el")))
       (unless (string= (substring filename -4) ".elc")
 	(setq filename (concat filename ".elc"))))
-    ;; remove .el(c) extension from filename to create saved dictionary name
+    ;; remove .el(c) extension from filename to create saved dictionary
+    ;; name
     (setq dictname (if uncompiled
 		       (substring (file-name-nondirectory filename) 0 -3)
 		     (substring (file-name-nondirectory filename) 0 -4)))
     
     (save-excursion
       ;; create a temporary file
-      (setq buff (find-file-noselect
-		  (setq tmpfile (make-temp-file dictname))))
+      (setq buff
+	    (find-file-noselect (setq tmpfile (make-temp-file dictname))))
       (set-buffer buff)
-      
-      ;; if the dictionary is lookup only, dump the lookup cache to an alist
-      (if lookup-only
-	  (progn
-	    (maphash (lambda (key val) (push (cons key val) lookup-alist))
-		     (dictree--lookup-hash dict))
-	    ;; generate code to reconstruct the lookup hash table
-	    (setq hashcode
-		  (concat
-		   "(let ((lookup-hash (make-hash-table :test 'equal)))\n"
-		   "  (mapcar (lambda (entry)\n"
-		   "    (puthash (car entry) (cdr entry) lookup-hash))\n"
-                   "    (dictree--lookup-hash " dictname "))\n"
-		   "  (dictree--set-lookup-hash " dictname " lookup-hash)\n"))
-	    ;; generate the structure to save
-	    (setq tmpdict (list 'DICT dictname filename autosave
-				(dictree--insfun dict) lookup-only lookup-alist)))
-	
-	
-	;; otherwise, dump caches to alists as necessary and generate code to
-	;; reonstruct the hash tables from the alists
-	(setq lookup-speed (dictree--lookup-speed dict)
-	      completion-speed (dictree--completion-speed dict)
-	      ordered-speed (dictree--ordered-speed dict))
-	
-	;; create the lookup alist, if necessaru
-	(when lookup-speed
-	  (maphash (lambda (key val) (push (cons key val) lookup-alist))
-		   (dictree--lookup-hash dict))
-	  ;; generate code to reconstruct the lookup hash table
-	  (setq hashcode
-		(concat
-		 hashcode
-		 "(let ((lookup-hash (make-hash-table :test 'equal)))\n"
-		 "  (mapcar (lambda (entry)\n"
-		 "    (puthash (car entry) (cdr entry) lookup-hash)\n"
-	         "    (dictree--lookup-hash " dictname ")))\n"
-		 "  (dictree--set-lookup-hash " dictname " lookup-hash))\n")))
-	
-	;; create the completion alist, if necessary
-	(when completion-speed
-	  (maphash (lambda (key val) (push (cons key val) completion-alist))
-		   (dictree--completion-hash dict))
-	  ;; generate code to reconstruct the completion hash table
-	  (setq hashcode
-		(concat
-		 hashcode
-		 "(let ((completion-hash (make-hash-table :test 'equal)))\n"
-		 "  (mapcar (lambda (entry)\n"
-		 "    (puthash (car entry) (cdr entry) completion-hash)\n"
-	         "    (dictree--completion-hash " dictname ")))\n"
-		 "  (dictree--set-completion-hash " dictname " completion-hash))"
-		 "\n")))
-	
-	;; create the ordered completion alist, if necessary
-	(when ordered-speed
-	  (maphash (lambda (key val) (push (cons key val) ordered-alist))
-		   (dictree--ordered-hash dict))
-	  ;; generate code to reconstruct the ordered hash table
-	  (setq hashcode
-		(concat
-		 hashcode
-		 "(let ((ordered-hash (make-hash-table :test 'equal)))\n"
-		 "  (mapcar (lambda (entry)\n"
-		 "    (puthash (car entry) (cdr entry) ordered-hash))\n"
-	         "    (dictree--ordered-hash " dictname "))\n"
-		 "  (dictree--set-ordered-hash " dictname " ordered-hash))\n")))
-	
-	;; generate the structure to save
-	(setq tmpdict (list 'DICT nil nil autosave nil
-			    (dictree--tstree dict) lookup-only
-			    lookup-alist lookup-speed
-			    completion-alist completion-speed
-			    ordered-alist ordered-speed))
-      )
-      
-      
-      ;; write lisp code that generates the dictionary object
-      (insert "(provide '" dictname ")\n")
-      (insert "(require 'dict-tree)\n")
-      (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
-      (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n")
-      (insert hashcode)
-      (insert "(dictree--set-name " dictname " \"" dictname "\")\n")
-      (insert "(dictree--set-filename " dictname
-	      " (locate-library \"" dictname "\"))\n")
-      (insert "(unless (memq " dictname " dictree-loaded-list)"
-	      " (push " dictname " dictree-loaded-list))\n")
+      (if (dictree--meta-dict-p dict)
+	  (dictree-write-meta-dict-code dict dictname)
+	(dictree-write-dict-code dict dictname))
       (save-buffer)
-      (kill-buffer buff)
-	
-      ;; byte-compile the code (unless uncompiled option is set) and move the
-      ;; file to its final destination
-      (if (or uncompiled (save-window-excursion (byte-compile-file tmpfile)))
-	  (progn
-	    (when (or (not (file-exists-p filename))
-		      overwrite
-		      (y-or-n-p
-		       (format "File %s already exists. Overwrite? "
-			       filename)))
-	      (if uncompiled
-		  (rename-file tmpfile filename t)
-		(rename-file (concat tmpfile ".elc") filename t)
-		(dictree--set-modified dict nil)
-		;; if writing to a different name, unload dictionary under old
-		;; name and reload it under new one
-		(unless (string= dictname (dictree--name dict))
-		  (dictree-unload dict)
-		  (dictree-load filename))
-		(delete-file tmpfile))
-	      (message "Dictionary %s saved to %s" dictname filename)
-	      t))  ; return t if dictionary was successfully saved
-	;; if there were errors compiling, throw error
-	(error "Error saving %s. Dictionary not saved" dictname))
-      ))
+      (kill-buffer buff))
+    
+    ;; byte-compile the code (unless uncompiled option is set) and move
+    ;; the file to its final destination
+    (if (or uncompiled (save-window-excursion (byte-compile-file tmpfile)))
+	(progn
+	  (when (or (not (file-exists-p filename))
+		    overwrite
+		    (y-or-n-p
+		     (format "File %s already exists. Overwrite? "
+			     filename)))
+	    (if uncompiled
+		(rename-file tmpfile filename t)
+	      (rename-file (concat tmpfile ".elc") filename t)
+	      (dictree--set-modified dict nil)
+	      ;; if writing to a different name, unload dictionary under
+	      ;; old name and reload it under new one
+	      (unless (string= dictname (dictree--name dict))
+		(dictree-unload dict)
+		(dictree-load filename))
+	      (delete-file tmpfile))
+	    (message "Dictionary %s saved to %s" dictname filename)
+	    t))  ; return t if dictionary was successfully saved
+      ;; if there were errors compiling, throw error
+      (error "Error saving %s. Dictionary not saved" dictname)))
 )
-
-
-
-
-(defun dictree-save-modified (&optional ask all)
-  "Save all modified dictionaries that have a non-nil autosave flag.
-
-If optional argument ASK is non-nil, ask for confirmation before
-saving. Interactively, ASK is the prefix argument.
-
-If optional argument ALL is non-nil, save all dictionaries, even
-those without the autosave flag."
-  (interactive "P")
-  ;; For each loaded dictionary, check if dictionary has been modified. If so,
-  ;; save it if autosave is on
-  (dolist (dict dictree-loaded-list)
-    (when (and (dictree--modified dict)
-	       (or all (dictree--autosave dict))
-	       (or (not ask) (y-or-n-p (format "Save modified dictionary %s? "
-					       (dictree--filename dict)))))
-      (dictree-save dict)
-      (dictree--set-modified dict nil)))
-)
-
 
 
 
@@ -1461,17 +1653,17 @@ Returns t if successful, nil otherwise."
       (beep)
       (error "Error loading dictionary from %s" file))
     
-    ;; ensure the dictionary name and file name associated with the dictionary
-    ;; match the file it was loaded from
+    ;; ensure the dictionary name and file name associated with the
+    ;; dictionary match the file it was loaded from
     (dictree--set-filename dict (expand-file-name file))
     (dictree--set-name dict dictname)
     
-    ;; make sure the dictionary is in dictree-loaded-list (normally the lisp code
-    ;; in the dictionary itself should do that)
-    (unless (memq dict dictree-loaded-list) (push dict dictree-loaded-list))
+    ;; make sure the dictionary is in dictree-loaded-list (normally the
+    ;; lisp code in the dictionary itself should do that)
+    (unless (memq dict dictree-loaded-list)
+      (push dict dictree-loaded-list))
     (message (format "Loaded dictionary %s" dictname)))
 )
-
 
 
 
@@ -1482,8 +1674,8 @@ NOT be saved even if its autosave flag is set."
   (interactive (list (read-dict "Dictionary to unload: ")
 		     current-prefix-arg))
   
-  ;; if dictionary has been modified, autosave is set and not overidden, save
-  ;; it first
+  ;; if dictionary has been modified, autosave is set and not overidden,
+  ;; save it first
   (when (and (dictree--modified dict)
 	     (null dont-save)
 	     (or (eq (dictree--autosave dict) t)
@@ -1500,7 +1692,6 @@ NOT be saved even if its autosave flag is set."
   (unintern (dictree--name dict))
   (message "Dictionary %s unloaded" (dictree--name dict))
 )
-
 
 
 
@@ -1562,7 +1753,6 @@ data can not be used to recreate the dictionary using
 
 
 
-
 (defun dictree-dump-words-to-file (dict filename &optional overwrite)
   "Dump words and their associated data
 from dictionary DICT to a text file FILENAME, in the same format
@@ -1586,11 +1776,348 @@ data can not be used to recreate the dictionary using
       (if (and (file-exists-p filename)
 	       (not overwrite)
 	       (not (y-or-n-p
-		     (format "File %s already exists. Overwrite? " filename))))
+		     (format "File %s already exists. Overwrite? "
+			     filename))))
 	  (message "Word dump cancelled")
 	(write-file filename))
       (kill-buffer buff)))
 )
+
+
+
+
+
+;;; ==================================================================
+;;;                   Internal dictionary functions
+
+(defun dictree-update-cache (dict key newdata)
+  "Synchronise dictionary DICT's caches,
+given that the data associated with KEY has been changed to NEWDATA."
+
+  (let (seq cache entry cmpl maxnum)
+    
+    ;; synchronise the lookup cache if dict is a meta-dictionary,
+    ;; since it's not done automatically
+    (when (and (dictree--meta-dict-p dict)
+	       (dictree--lookup-speed dict)
+	       (gethash key (dictree--lookup-hash dict)))
+      (puthash key newdata (dictree--lookup-hash dict)))
+    
+    
+    ;; synchronize the completion hash, if it exists
+    (when (dictree--completion-speed dict)
+      ;; have to check every possible subsequence that could be cached!
+      (dotimes (i (1+ (length key)))
+	(setq seq (substring key 0 i))	  
+	(when (setq cache (gethash seq (dictree--completion-hash dict)))
+	  (setq cmpl (dictree--cache-completions cache))
+	  (setq maxnum (dictree--cache-maxnum cache))
+	  ;; If key is already in the completion list, only update it
+	  ;; if dict is a meta-dictionary (since it's not updated
+	  ;; automatically).
+	  (if (setq entry (assoc key cmpl))
+	      (setcdr entry (dictree-lookup dict key))
+	    ;; Otherwise, update the list from the tree. (Note: we could
+	    ;; instead add key to the list and re-sort, but it's
+	    ;; probably not worth it.)
+	    (dictree--set-cache-completions
+	     cache (tstree-complete
+		    (dictree--tstree dict) seq maxnum)))
+	  )))
+    
+    
+    ;; synchronize the ordered completion hash, if it exists
+    (when (dictree--ordered-speed dict)
+      ;; have to check every possible subsequence that could
+      ;; be cached!
+      (dotimes (i (1+ (length key)))
+	(setq seq (dictree--subseq key 0 i))	  
+	(when (setq cache (gethash seq (dictree--ordered-hash dict)))
+	  (setq cmpl (dictree--cache-completions cache))
+	  (setq maxnum (dictree--cache-maxnum cache))
+	  (cond
+	   
+	   ;; if key is in the completion list...
+	   ((setq entry (assoc key cmpl))
+	    ;; Update the cache entry if dict is a meta-dictionary,
+	    ;; since it's not done automatically.
+	    (when (dictree--meta-dict-p dict)
+	      (setcdr entry
+		      (dictree--wrap-data (dictree-lookup dict key))))
+	    ;; re-sort the list
+	    (dictree--set-cache-completions
+	     cache (sort cmpl (dictree--rankfun dict)))
+	    (setq cmpl (dictree--cache-completions cache))
+	    ;; If key is now at the end of the list, we've no
+	    ;; choice but to update from the tree.
+	    (when (equal (caar (last cmpl)) key)
+	      (dictree--set-cache-completions
+	       cache (tstree-complete-ordered
+		      (dictree--tstree dict) seq maxnum))))
+	   
+	   ;; if key isn't in the completion list...
+	   (t
+	    ;; add key to the end of the list and re-sort
+	    (setcdr (last cmpl) (list (cons key newdata)))
+	    (dictree--set-cache-completions
+	     cache (sort cmpl (dictree--rankfun dict)))
+	    (setq cmpl (dictree--cache-completions cache))
+	    ;; remove excess completions
+	    (when (> (length cmpl) maxnum)
+	      (setcdr (nthcdr (1- maxnum) cmpl) nil)))
+	   )))))
+)
+
+
+
+(defun dictree-write-dict-code (dict dictname)
+  "Write code for normal dictionary DICT to current buffer,
+giving it the name DICTNAME."
+
+  (let (hashcode tmpdict lookup-alist completion-alist ordered-alist)
+    
+    ;; if the dictionary is lookup only, dump the lookup cache to an alist
+    (if (dictree--lookup-only dict)
+	(progn
+	  (maphash (lambda (key val) (push (cons key val) lookup-alist))
+		   (dictree--lookup-hash dict))
+	  ;; generate code to reconstruct the lookup hash table
+	  (setq hashcode
+		(concat
+		 "(let ((lookup-hash (make-hash-table :test 'equal)))\n"
+		 "  (mapcar (lambda (entry)\n"
+		 "    (puthash (car entry) (cdr entry) lookup-hash))\n"
+		 "    (dictree--lookup-hash " dictname "))\n"
+		 "  (dictree--set-lookup-hash " dictname
+		                              " lookup-hash)\n"))
+	  ;; generate the structure to save
+	  (setq tmpdict (list 'DICT dictname nil
+			      (dictree--autosave dict) nil t
+			      nil (dictree--insfun dict) nil
+			      lookup-alist nil nil nil nil nil)))
+      
+      
+      ;; otherwise, dump caches to alists as necessary and generate code
+      ;; to reonstruct the hash tables from the alists
+      (let ((lookup-speed (dictree--lookup-speed dict))
+	    (completion-speed (dictree--completion-speed dict))
+	    (ordered-speed (dictree--ordered-speed dict)))
+	
+	;; create the lookup alist, if necessary
+	(when lookup-speed
+	  (maphash
+	   (lambda (key val)
+	     (push
+	      (cons key (cons
+			 (mapcar 'car (dictree--cache-completions val))
+			 (dictree--cache-maxnum val)))
+	      lookup-alist))
+	   (dictree--lookup-hash dict))
+	  ;; generate code to reconstruct the lookup hash table
+	  (setq hashcode
+		(concat
+		 hashcode
+		 "(let ((lookup-hash (make-hash-table :test 'equal))\n"
+		 "      (tstree (dictree--tstree " dictname ")))\n"
+		 "  (mapc\n"
+		 "   (lambda (entry)\n"
+		 "     (puthash\n"
+		 "      (car entry)\n"
+		 "      (dictree--cache-create\n"
+		 "       (mapcar\n"
+		 "        (lambda (key)\n"
+		 "          (cons key (tstree-member tstree key)))\n"
+		 "        (dictree--cache-completions (cdr entry)))\n"
+		 "       (dictree--cache-maxnum (cdr entry)))\n"
+		 "      lookup-hash))\n"
+		 "   (dictree--lookup-hash " dictname "))\n"
+		 "  (dictree--set-lookup-hash " dictname
+		                              " lookup-hash))\n")))
+	
+	;; create the completion alist, if necessary
+	(when completion-speed
+	  (maphash
+	   (lambda (key val)
+	     (push
+	      (cons key (cons
+			 (mapcar 'car (dictree--cache-completions val))
+			 (dictree--cache-maxnum val)))
+	      completion-alist))
+	   (dictree--completion-hash dict))
+	  ;; generate code to reconstruct the completion hash table
+	  (setq hashcode
+		(concat
+		 hashcode
+		 "(let ((completion-hash (make-hash-table :test 'equal))\n"
+		 "      (tstree (dictree--tstree " dictname ")))\n"
+		 "  (mapc\n"
+		 "   (lambda (entry)\n"
+		 "     (puthash\n"
+		 "      (car entry)\n"
+		 "      (dictree--cache-create\n"
+		 "       (mapcar\n"
+		 "        (lambda (key)\n"
+		 "          (cons key (tstree-member tstree key)))\n"
+		 "        (dictree--cache-completions (cdr entry)))\n"
+		 "       (dictree--cache-maxnum (cdr entry)))\n"
+		 "      completion-hash))\n"
+		 "   (dictree--completion-hash " dictname "))\n"
+		 "  (dictree--set-completion-hash " dictname
+		                                  " completion-hash))\n")))
+	
+	;; create the ordered completion alist, if necessary
+	(when ordered-speed
+	  (maphash
+	   (lambda (key val)
+	     (push
+	      (cons key (cons
+			 (mapcar 'car (dictree--cache-completions val))
+			 (dictree--cache-maxnum val)))
+	      ordered-alist))
+	   (dictree--ordered-hash dict))
+	  ;; generate code to reconstruct the ordered hash table
+	  (setq hashcode
+		(concat
+		 hashcode
+		 "(let ((ordered-hash (make-hash-table :test 'equal))\n"
+		 "      (tstree (dictree--tstree " dictname ")))\n"
+		 "  (mapc\n"
+		 "   (lambda (entry)\n"
+		 "     (puthash\n"
+		 "      (car entry)\n"
+		 "      (dictree--cache-create\n"
+		 "       (mapcar\n"
+		 "        (lambda (key)\n"
+		 "          (cons key (tstree-member tstree key)))\n"
+		 "        (dictree--cache-completions (cdr entry)))\n"
+		 "       (dictree--cache-maxnum (cdr entry)))\n"
+		 "      ordered-hash))\n"
+		 "   (dictree--ordered-hash " dictname "))\n"
+		 "  (dictree--set-ordered-hash " dictname
+		                               " ordered-hash))\n")))
+	
+	;; generate the structure to save
+	(setq tmpdict (list 'DICT dictname nil
+			    (dictree--autosave dict)
+			    nil nil
+			    (dictree--tstree dict)
+			    (dictree--insfun dict)
+			    (dictree--rankfun dict)
+			    lookup-alist lookup-speed
+			    completion-alist completion-speed
+			    ordered-alist ordered-speed))
+	))
+    
+    
+    ;; write lisp code that generates the dictionary object
+    (insert "(provide '" dictname ")\n")
+    (insert "(require 'dict-tree)\n")
+    (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
+    (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n")
+    (insert hashcode)
+    (insert "(dictree--set-filename " dictname
+	    " (locate-library \"" dictname "\"))\n")
+    (insert "(unless (memq " dictname " dictree-loaded-list)"
+	    " (push " dictname " dictree-loaded-list))\n"))
+)
+
+
+
+
+(defun dictree-write-meta-dict-code (dict dictname)
+  "Write code for meta-dictionary DICT to current buffer,
+giving it the name DICTNAME."
+
+  (let (hashcode tmpdict lookup-alist completion-alist ordered-alist)
+    
+    ;; dump caches to alists as necessary and generate code to reonstruct
+    ;; the hash tables from the alists
+    (let ((lookup-speed (dictree--lookup-speed dict))
+	  (completion-speed (dictree--completion-speed dict))
+	  (ordered-speed (dictree--ordered-speed dict)))
+      
+      ;; create the lookup alist, if necessary
+      (when lookup-speed
+	(maphash (lambda (key val)
+		   (push (cons key (mapcar 'car val)) lookup-alist))
+		 (dictree--lookup-hash dict))
+	;; generate code to reconstruct the lookup hash table
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((lookup-hash (make-hash-table :test 'equal)))\n"
+	       "  (mapc (lambda (entry)\n"
+	       "    (puthash (car entry) (cdr entry) lookup-hash))\n"
+	       "    (dictree--lookup-hash " dictname "))\n"
+	       "  (dictree--set-lookup-hash " dictname
+	                                    " lookup-hash))\n")))
+      
+      ;; create the completion alist, if necessary
+      (when completion-speed
+	(maphash (lambda (key val)
+		   (push (cons key (mapcar 'car val)) completion-alist))
+		 (dictree--completion-hash dict))
+	;; generate code to reconstruct the completion hash table
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((completion-hash (make-hash-table :test 'equal)))\n"
+	       "  (mapc (lambda (entry)\n"
+	       "    (puthash (car entry) (cdr entry) completion-hash))\n"
+	       "    (dictree--completion-hash " dictname "))\n"
+	       "  (dictree--set-completion-hash " dictname
+	                                        " completion-hash))\n")))
+      
+      ;; create the ordered completion alist, if necessary
+      (when ordered-speed
+	(maphash (lambda (key val) (push (cons key val) ordered-alist))
+		 (dictree--ordered-hash dict))
+	;; generate code to reconstruct the ordered hash table
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((ordered-hash (make-hash-table :test 'equal)))\n"
+	       "  (mapc (lambda (entry)\n"
+	       "    (puthash (car entry) (cdr entry) ordered-hash))\n"
+	       "    (dictree--ordered-hash " dictname "))\n"
+	       "  (dictree--set-ordered-hash " dictname
+	                                     " ordered-hash))\n")))
+      
+      
+      ;; generate the structure to save
+      (setq tmpdict
+	    (if (dictree--lookup-only dict)
+		;; lookup-only meta-dictionary
+		(list 'DICT dictname nil (dictree--autosave dict) nil t
+		      nil (dictree--combfun dict) nil
+		      lookup-alist lookup-speed nil nil nil nil)
+	      ;; normal meta-dictionary
+	      (list 'DICT dictname nil (dictree--autosave dict) nil nil
+		    (mapcar 'dictree-name (dictree--dict-list dict))
+		    (dictree--combfun dict) (dictree--rankfun dict)
+		    lookup-alist lookup-speed
+		    completion-alist completion-speed
+		    ordered-alist ordered-speed))))
+    
+    
+    ;; write lisp code that generates the dictionary object
+    (insert "(provide '" dictname ")\n")
+    (insert "(require 'dict-tree)\n")
+    (mapc (lambda (name) (insert "(require '" name ")\n"))
+	  (dictree--meta-dict-list tmpdict))
+    (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
+    (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n")
+    (insert "(dictree--set-dict-list\n"
+	    " " dictname "\n"
+	    " (mapcar (lambda (name) (eval (intern-soft name)))\n"
+	    "         (dictree--dict-list " dictname " )))\n")
+    (insert hashcode)
+    (insert "(dictree--set-filename " dictname
+	    " (locate-library \"" dictname "\"))\n")
+    (insert "(unless (memq " dictname " dictree-loaded-list)"
+	    " (push " dictname " dictree-loaded-list))\n"))
+)
+
 
 
 
@@ -1605,7 +2132,7 @@ Prompt with PROMPT. By default, return DEFAULT."
     (mapc (lambda (dict)
 	    (unless (or (null (dictree--name dict))
 			(member (dictree--name dict) dictlist))
-	      (push (dictree--name dict) dictlist)))
+	      (push (list (dictree--name dict)) dictlist)))
 	  dictree-loaded-list)
     (eval (intern-soft
 	   (completing-read prompt dictlist
@@ -1614,8 +2141,8 @@ Prompt with PROMPT. By default, return DEFAULT."
 
 
 
-;; Add the dictree-save-modified function to the kill-emacs-hook to save modified
-;; dictionaries when exiting emacs
+;; Add the dictree-save-modified function to the kill-emacs-hook to save
+;; modified dictionaries when exiting emacs
 (add-hook 'kill-emacs-hook 'dictree-save-modified)
 
 
