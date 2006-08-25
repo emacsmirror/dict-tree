@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2006 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.10
+;; Version: 0.10.1
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -53,6 +53,10 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.10.1
+;; * added optional DICTLIST argument to `read-dict', to allow completion from
+;;   a restricted set of dictionaries
 ;;
 ;; Version 0.10
 ;; * finally wrote a `dictree-delete' function!
@@ -2220,17 +2224,19 @@ giving it the name DICTNAME."
   "History list for commands that read an existing ditionary name.")
 
 
-(defun read-dict (prompt &optional default)
+(defun read-dict (prompt &optional default dictlist)
   "Read the name of a dictionary with completion, and return it.
-Prompt with PROMPT. By default, return DEFAULT."
-  (let (dictlist)
+
+Prompt with PROMPT. By default, return DEFAULT. If DICTLIST is
+supplied, only complete on dictionaries in that list."
+  (let (dictnames)
     (mapc (lambda (dict)
 	    (unless (or (null (dictree--name dict))
-			(member (dictree--name dict) dictlist))
-	      (push (list (dictree--name dict)) dictlist)))
-	  dictree-loaded-list)
+			(member (dictree--name dict) dictnames))
+	      (push (list (dictree--name dict)) dictnames)))
+	  (or dictlist dictree-loaded-list))
     (eval (intern-soft
-	   (completing-read prompt dictlist
+	   (completing-read prompt dictnames
 			    nil t nil 'dictree-history default))))
 )
 
