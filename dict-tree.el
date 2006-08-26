@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2006 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.10.1
+;; Version: 0.10.2
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -53,6 +53,9 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.10.2
+;; * very minor changes to text of some messages
 ;;
 ;; Version 0.10.1
 ;; * added optional DICTLIST argument to `read-dict', to allow completion from
@@ -1609,8 +1612,9 @@ Use `dictree-write' to save to a different file."
     ;; if dictionary has no associated file, prompt for one
     (unless (and filename (> (length filename) 0))
       (setq filename
-	    (read-file-name (format "Save %s to file: "
-				    (dictree--name dict))))
+	    (read-file-name
+	     (format "Save %s to file (leave blank to NOT save): "
+		     (dictree--name dict))))
       (dictree--set-filename dict filename))
     
     ;; if filename is blank, don't save
