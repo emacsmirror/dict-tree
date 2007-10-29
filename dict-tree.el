@@ -1586,7 +1586,7 @@ saving. Interactively, ASK is the prefix argument."
    ((and (listp dict) (dictree-p (car dict))))
    (dict (setq dict 'all)))
   
-  ;; For each dictionary in list / loaded dictionary, check if dictionary
+  ;; For each dictionary in list / each loaded dictionary, check if dictionary
   ;; has been modified. If so, save it if autosave is on or if saving all
   (dolist (dic (if (or (null dict) (eq dict 'all))
 		    dictree-loaded-list
