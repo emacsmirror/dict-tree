@@ -2,7 +2,7 @@
 ;;; dict-tree.el --- dictionary data structure package
 
 
-;; Copyright (C) 2004-2006 Toby Cubitt
+;; Copyright (C) 2004-2008 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
 ;; Version: 0.11
@@ -1572,7 +1572,7 @@ line is in wrong format."
 
 
 
-(defun dictree-save-modified (&optional dict ask)
+(defun dictree-save-modified (&optional dict ask compilation)
   "Save all modified dictionaries that have a non-nil autosave flag.
 
 If optional argument DICT is a list of dictionaries or a single
@@ -1582,8 +1582,11 @@ dictionaries, irrespective of their autosave flag. Interactively,
 this can be set by supplying a prefix argument.
 
 If optional argument ASK is non-nil, ask for confirmation before
-saving. Interactively, ASK is the prefix argument."
-  (interactive "P")
+saving.
+
+Optional argument COMPILATION determines whether to save the
+dictionaries in compiled or uncompiled form. The default is to
+save both forms. See `dictree-write'."
 
   ;; sort out DICT argument
   (cond
@@ -1601,16 +1604,19 @@ saving. Interactively, ASK is the prefix argument."
 	       (or (not ask)
 		   (y-or-n-p (format "Save modified dictionary %s? "
 				     (dictree--filename dic)))))
-      (dictree-save dic)
+      (dictree-save dic compilation)
       (dictree--set-modified dic nil)))
 )
 
 
 
-(defun dictree-save (dict)
+(defun dictree-save (dict &optional compilation)
   "Save dictionary DICT to it's associated file.
-Use `dictree-write' to save to a different file."
-  (interactive (list (read-dict "Dictionary to save: ")))
+Use `dictree-write' to save to a different file.
+
+Optional argument COMPILATION determines whether to save the
+dictionary in compiled or uncompiled form. The default is to save
+both forms. See `dictree-write'."
   
   (let* ((filename (dictree--filename dict)))
     
@@ -1626,7 +1632,7 @@ Use `dictree-write' to save to a different file."
     (if (string= filename "")
 	(message "Dictionary %s NOT saved" (dictree--name dict))
       ;; otherwise write dictionary to file without requiring confirmation
-      (dictree-write dict filename t)))
+      (dictree-write dict filename t compilation)))
 )
 
 
@@ -1652,10 +1658,6 @@ symbol 'uncompiled, only the uncompiled version will be created.
 Interactivley, DICT and FILENAME are read from the minibuffer,
 and OVERWRITE is the prefix argument."
   
-  (interactive (list (read-dict "Dictionary to write: ")
-		     (read-file-name "File to write to: ")
-		     current-prefix-arg))
-
   (let (dictname buff tmpfile)
     ;; add .el(c) extension to the filename if not already there
     (cond
