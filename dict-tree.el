@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2006 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.10.2
+;; Version: 0.11
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -53,6 +53,11 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.11
+;; * modified `dictree-write' so that, by default, both compiled and uncompiled
+;;   versions of dictionaries are created when writing dictionaries to file
+;; * fixed slow byte-compilation under Emacs 22
 ;;
 ;; Version 0.10.2
 ;; * very minor changes to text of some messages
@@ -1626,14 +1631,23 @@ Use `dictree-write' to save to a different file."
 
 
 
-(defun dictree-write (dict filename &optional overwrite uncompiled)
+(defun dictree-write (dict filename &optional overwrite compilation)
   "Write dictionary DICT to file FILENAME.
 
 If optional argument OVERWRITE is non-nil, no confirmation will
 be asked for before overwriting an existing file.
 
-If optional argument UNCOMPILED is set, an uncompiled copy of the
-dictionary will be created.
+The default is to create both compiled and uncompiled versions of
+the dictionary, with extensions .elc and .el respectively (if
+FILENAME has either of these extensions, they are stripped off
+before proceeding). The compiled version is always used in
+preference to the uncomplied version, as it loads
+faster. However, only the uncompiled version is portable between
+different Emacs versions.
+
+If optional argument COMPILATION is the symbol 'compiled, only
+the uncompiled version will be created, whereas if it is the
+symbol 'uncompiled, only the uncompiled version will be created.
 
 Interactivley, DICT and FILENAME are read from the minibuffer,
 and OVERWRITE is the prefix argument."
@@ -1643,18 +1657,16 @@ and OVERWRITE is the prefix argument."
 		     current-prefix-arg))
 
   (let (dictname buff tmpfile)
-    
     ;; add .el(c) extension to the filename if not already there
-    (if uncompiled
-	(unless (string= (substring filename -3) ".el")
-	  (setq filename (concat filename ".el")))
-      (unless (string= (substring filename -4) ".elc")
-	(setq filename (concat filename ".elc"))))
+    (cond
+     ((string= (substring filename -3) ".el")
+      (setq filename (substring filename 0 -3)))
+     ((string= (substring filename -4) ".elc")
+      (setq filename (substring filename 0 -4))))
+    
     ;; remove .el(c) extension from filename to create saved dictionary
     ;; name
-    (setq dictname (if uncompiled
-		       (substring (file-name-nondirectory filename) 0 -3)
-		     (substring (file-name-nondirectory filename) 0 -4)))
+    (setq dictname (file-name-nondirectory filename))
     
     (save-excursion
       ;; create a temporary file
@@ -1667,31 +1679,43 @@ and OVERWRITE is the prefix argument."
 	(dictree-write-dict-code dict dictname))
       (save-buffer)
       (kill-buffer buff))
-    
-    ;; byte-compile the code (unless uncompiled option is set) and move
-    ;; the file to its final destination
-    (if (or uncompiled
-	    (save-window-excursion (byte-compile-file tmpfile)))
-	(progn
-	  (when (or (not (file-exists-p filename))
-		    overwrite
-		    (y-or-n-p
-		     (format "File %s already exists. Overwrite? "
-			     filename)))
-	    (if uncompiled
-		(rename-file tmpfile filename t)
-	      (rename-file (concat tmpfile ".elc") filename t)
-	      (dictree--set-modified dict nil)
-	      ;; if writing to a different name, unload dictionary under
-	      ;; old name and reload it under new one
-	      (unless (string= dictname (dictree--name dict))
-		(dictree-unload dict)
-		(dictree-load filename))
-	      (delete-file tmpfile))
-	    (message "Dictionary %s saved to %s" dictname filename)
-	    t))  ; return t if dictionary was successfully saved
-      ;; if there were errors compiling, throw error
-      (error "Error saving %s. Dictionary not saved" dictname)))
+
+    ;; prompt to overwrite if necessary
+    (when (or overwrite
+	      (and
+	       (or (eq compilation 'compiled)
+		   (not (file-exists-p (concat filename ".el"))))
+	       (or (eq compilation 'uncompiled)
+		   (not (file-exists-p (concat filename ".elc")))))
+	      (y-or-n-p
+	       (format "File %s already exists. Overwrite? "
+		       (concat filename ".el(c)"))))
+      (condition-case nil
+	  (progn
+	    ;; move the uncompiled version to its final destination
+	    (unless (eq compilation 'compiled)
+	      (copy-file tmpfile (concat filename ".el") t))
+	    ;; byte-compile and move the compiled version to its final
+	    ;; destination
+	    (unless (eq compilation 'uncompiled)
+	      (if (save-window-excursion
+		    (let ((byte-compile-disable-print-circle t))
+		      (byte-compile-file tmpfile)))
+		  (rename-file (concat tmpfile ".elc")
+			       (concat filename ".elc") t)
+		(error))))
+	(error (error "Error saving %s. Dictionary not saved" dictname)))
+      
+      ;; if writing to a different name, unload dictionary under old name and
+      ;; reload it under new one
+      (dictree--set-modified dict nil)
+      (unless (string= dictname (dictree--name dict))
+	(dictree-unload dict)
+	(dictree-load filename)))
+
+    (delete-file tmpfile)
+    (message "Dictionary %s saved to %s" dictname filename)
+    t)  ; return t to indicate dictionary was successfully saved
 )
 
 
