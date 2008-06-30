@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2008 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.11
+;; Version: 0.11.1
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -53,6 +53,11 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.11.1
+;; * set and restore value of `byte-compile-disable-print-circle' instead of
+;;   let-binding it, to avoid warnings when compiling
+;; * added `dictree-goto-line' macro to work around `goto-line' bug
 ;;
 ;; Version 0.11
 ;; * modified `dictree-write' so that, by default, both compiled and uncompiled
@@ -164,6 +169,7 @@
 
 (provide 'dict-tree)
 (require 'tstree)
+(require 'bytecomp)
 
 
 
@@ -471,6 +477,24 @@ sorted before the second."
   ;; Set the completions list for cache entry CACHE
   `(setcdr ,cache ,maxnum))
 
+
+
+;;; ================================================================
+;;;                   Miscelaneous macros
+
+;; `goto-line' without messing around with mark and messages
+;; Note: this is a bug in simple.el; there clearly can be a need for
+;;       non-interactive calls to goto-line from Lisp code, and
+;;       there's no warning about doing this. Yet goto-line *always*
+;;       calls push-mark, which usually *shouldn't* be invoked by
+;;       Lisp programs, as its docstring warns.
+(defmacro dictree-goto-line (line)
+  "Goto line LINE, counting from line 1 at beginning of buffer."
+  `(progn
+     (goto-char 1)
+     (if (eq selective-display t)
+	 (re-search-forward "[\n\C-m]" nil 'end (1- ,line))
+       (forward-line (1- ,line)))))
 
 
 
@@ -1512,7 +1536,7 @@ dictionary structure."
 	     (midpt (+ (/ lines 2) (mod lines 2)))
 	     entry)
         ;; insert the median key and set the dictionary's modified flag
-	(goto-line midpt)
+	(dictree-goto-line midpt)
 	(when (setq entry (dictree-read-line))
 	  (dictree-insert dict (car entry) (nth 1 entry))
 	  (dictree-set-meta-data dict (car entry) (nth 2 entry)))
@@ -1521,14 +1545,14 @@ dictionary structure."
         ;; insert keys successively further away from the median in both
         ;; directions
 	(dotimes (i (1- midpt))
-	  (goto-line (+ midpt i 1))
+	  (dictree-goto-line (+ midpt i 1))
 	  (when (setq entry (dictree-read-line))
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (dictree-set-meta-data dict (car entry) (nth 2 entry)))
 	  (when (= 49 (mod i 50))
 	    (message "Inserting keys in %s...(%d of %d)"
 		     (dictree--name dict) (+ (* 2 i) 2) lines))
-	  (goto-line (- midpt i 1))
+	  (dictree-goto-line (- midpt i 1))
 	  (when (setq entry (dictree-read-line))
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (dictree-set-meta-data dict (car entry) (nth 2 entry))))
@@ -1536,7 +1560,7 @@ dictionary structure."
         ;; if file contains an even number of keys, we still have to add
         ;; the last one
 	(when (= 0 (mod lines 2))
-	  (goto-line lines)
+	  (dictree-goto-line lines)
 	  (when (setq entry (dictree-read-line))
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (dictree-set-meta-data dict (car entry) (nth 2 entry))))
@@ -1692,7 +1716,7 @@ and OVERWRITE is the prefix argument."
 	      (y-or-n-p
 	       (format "File %s already exists. Overwrite? "
 		       (concat filename ".el(c)"))))
-      (condition-case nil
+;      (condition-case nil
 	  (progn
 	    ;; move the uncompiled version to its final destination
 	    (unless (eq compilation 'compiled)
@@ -1701,12 +1725,16 @@ and OVERWRITE is the prefix argument."
 	    ;; destination
 	    (unless (eq compilation 'uncompiled)
 	      (if (save-window-excursion
-		    (let ((byte-compile-disable-print-circle t))
-		      (byte-compile-file tmpfile)))
+		    (let ((restore byte-compile-disable-print-circle)
+			  err)
+		      (setq byte-compile-disable-print-circle t)
+		      (setq err (byte-compile-file tmpfile))
+		      (setq byte-compile-disable-print-circle restore)
+		      err))
 		  (rename-file (concat tmpfile ".elc")
 			       (concat filename ".elc") t)
 		(error))))
-	(error (error "Error saving %s. Dictionary not saved" dictname)))
+;	(error (error "Error saving %s. Dictionary not saved" dictname)))
       
       ;; if writing to a different name, unload dictionary under old name and
       ;; reload it under new one
