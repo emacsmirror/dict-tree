@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2008 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.11.1
+;; Version: 0.12
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -53,6 +53,9 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.12
+;; * complete rewrite using new trie.el library
 ;;
 ;; Version 0.11.1
 ;; * set and restore value of `byte-compile-disable-print-circle' instead of
