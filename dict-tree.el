@@ -170,7 +170,7 @@
 
 ;;; Code:
 
-(provide 'dict-tree)
+(eval-when-compile (require 'cl))
 (require 'trie)
 (require 'bytecomp)
 
@@ -755,7 +755,7 @@ should return a combined data.
 The other arguments are as for `dictree-create'."
 
   ;; sadly, passing null values over-rides the defaults in the defstruct
-  ;; dictree--create, so we have to explicitly set the defaults again here
+  ;; `dictree--create', so we have to explicitly set the defaults again here
   (or name (setq name (and filename (file-name-sans-extension
 				     (file-name-nondirectory filename)))))
   (or combine-function (setq combine-function '+))
@@ -777,6 +777,13 @@ The other arguments are as for `dictree-create'."
     (unless unlisted
       (push dict dictree-loaded-list)
       (provide name))
+    ;; update meta-dict-list cells of constituent dictionaries
+    (mapc
+     (lambda (dic)
+       (if (symbolp dic) (setq dic (eval dic)))
+       (setf (dictree--meta-dict-list dic)
+	     (cons dict (dictree--meta-dict-list dic))))
+     dictionary-list)
     dict))
 
 
@@ -1373,12 +1380,40 @@ descending order if REVERSE is non-nil."
 
 
 
+(defun dictree-mapcar (function dict &optional type reverse)
+  "Apply FUNCTION to all entries in dictionary DICT,
+and make a list of the results.
+
+FUNCTION should take two arguments: a key sequence from the
+dictionary and its associated data.
+
+Optional argument TYPE (one of the symbols vector, lisp or
+string; defaults to vector) sets the type of sequence passed to
+FUNCTION. If TYPE is 'string, it must be possible to apply the
+function `string' to the individual elements of key sequences
+stored in DICT.
+
+The FUNCTION will be applied and the results combined in
+asscending \"lexical\" order (i.e. the order defined by the
+dictionary's comparison function; cf. `dictree-create'), or
+descending order if REVERSE is non-nil.
+
+Note that if you don't care about the order in which FUNCTION is
+applied, just that the resulting list is in the correct order,
+then
+
+  (trie-mapf function 'cons trie type (not reverse))
+
+is more efficient."
+  (nreverse (dictree-mapf function 'cons dict type)))
+
+
+
 (defun dictree-size (dict)
   "Return the number of entries in dictionary DICT."
   (interactive (list (read-dict "Dictionary: ")))
   (let ((count 0))
-    (dictree-mapc (lambda (&rest dummy) (incf count))
-		  (dictree--trie dict))
+    (dictree-mapc (lambda (&rest dummy) (incf count)) dict)
     (when (interactive-p)
       (message "Dictionary %s contains %d entries"
 	       (dictree--name dict) count))
@@ -1979,6 +2014,15 @@ NOT be saved even if its autosave flag is set."
     (dictree-save dict)
     (setf (dictree-modified dict) nil))
 
+  ;; if unloading a meta-dict, remove reference to it from constituent
+  ;; dictionaries' meta-dict-list cell
+  (when (dictree--meta-dict-p dict)
+    (mapc
+     (lambda (dic)
+       (setf (dictree--meta-dict-list dic)
+	     (delq dict (dictree--meta-dict-list dic))))
+     (dictree--meta-dict-dictlist dict)))
+
   ;; remove dictionary from list of loaded dictionaries and unload it
   (setq dictree-loaded-list (delq dict dictree-loaded-list))
   (unintern (dictree-name dict))
@@ -2309,7 +2353,7 @@ giving it the name DICTNAME."
     (setf (dictree--meta-dict-list tmpdict) nil)
 
     ;; write lisp code that generates the dictionary object
-    (insert "(provide '" dictname ")\n")
+    (insert "(eval-when-compile (require 'cl))\n")
     (insert "(require 'dict-tree)\n")
     (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
     (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n")
@@ -2317,7 +2361,8 @@ giving it the name DICTNAME."
     (insert "(setf (dictree-filename " dictname ")"
 	    " (locate-library \"" dictname "\"))\n")
     (insert "(unless (memq " dictname " dictree-loaded-list)"
-	    " (push " dictname " dictree-loaded-list))\n")))
+	    " (push " dictname " dictree-loaded-list))\n")
+        (insert "(provide '" dictname ")\n")))
 
 
 
@@ -2412,7 +2457,7 @@ giving it the name DICTNAME."
     (setf (dictree--meta-dict-meta-dict-list tmpdict) nil)
 
     ;; write lisp code that generates the dictionary object
-    (insert "(provide '" dictname ")\n")
+    (insert "(eval-when-compile (require 'cl))\n")
     (insert "(require 'dict-tree)\n")
     (mapc (lambda (name) (insert "(require '" name ")\n"))
 	  (dictree--meta-dict-dictlist tmpdict))
@@ -2426,7 +2471,8 @@ giving it the name DICTNAME."
     (insert "(setf (dictree-filename " dictname ")"
 	    " (locate-library \"" dictname "\"))\n")
     (insert "(unless (memq " dictname " dictree-loaded-list)"
-	    " (push " dictname " dictree-loaded-list))\n")))
+	    " (push " dictname " dictree-loaded-list))\n")
+        (insert "(provide '" dictname ")\n")))
 
 
 
@@ -2453,5 +2499,8 @@ supplied, only complete on dictionaries in that list."
 	   (completing-read prompt dictnames
 			    nil t nil 'dictree-history default)))))
 
+
+
+(provide 'dict-tree)
 
 ;;; dict-tree.el ends here
