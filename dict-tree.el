@@ -1621,10 +1621,9 @@ Returns nil if the stack is empty."
 ;;                        Advanced queries
 
 (defun dictree--query (query-type dict arg
-				  &optional
-				  rankfun maxnum reverse no-cache filter)
+		       &optional rank-function maxnum reverse no-cache filter)
   ;; Return results of QUERY-TYPE (currently, only 'complete is implemented)
-  ;; on DICT. If RANKFUN is non-nil, return results ordered accordingly.
+  ;; on DICT. If RANK-FUNCTION is non-nil, return results ordered accordingly.
 
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
@@ -1633,24 +1632,26 @@ Returns nil if the stack is empty."
     ;; map over all dictionaries in list
     (dolist (dic dict)
       (cond
-       ;; If FILTER or custom RANKFUN was specified, look in trie since we don't
-       ;; cache custom searches. We pass a slightly redefined filter to
-       ;; `trie-complete' to deal with data wrapping.
+       ;; If FILTER or custom RANK-FUNCTION was specified, look in trie since
+       ;; we don't cache custom searches. We pass a slightly redefined filter
+       ;; to `trie-complete' to deal with data wrapping.
        ((or filter
-	    (and rankfun (not (eq rankfun (dictree-rank-function dic)))))
+	    (and rank-function
+		 (not (eq rank-function (dictree-rank-function dic)))))
 	(setq cmpl
 	      (dictree--do-query
-	       query-type dic arg rankfun maxnum reverse
+	       query-type dic arg rank-function maxnum reverse
 	       (when filter
 		 (eval (macroexpand `(dictree--wrap-filter ,filter)))))))
 
 
        ;; if there's a cached result with enough completions, use it
        ((and (setq cache
-		   (if (dictree--query-cacheparam query-type dic rankfun)
+		   (if (dictree--query-cacheparam query-type dic
+						  rank-function)
 		       (gethash (cons arg reverse)
 				(dictree--query-cache
-				 query-type dic rankfun))
+				 query-type dic rank-function))
 		     nil))
 	     (or (null (dictree--cache-maxnum cache))
 		 (and maxnum (<= maxnum (dictree--cache-maxnum cache)))))
@@ -1665,32 +1666,34 @@ Returns nil if the stack is empty."
        (t
 	(let (time)
 	  (setq time (float-time))
-	  (setq cmpl (dictree--do-query query-type
-					dic arg rankfun maxnum reverse nil))
+	  (setq cmpl (dictree--do-query
+		      query-type dic arg rank-function maxnum reverse nil))
 	  (setq time (- (float-time) time))
 	  ;; if we took longer than dictionary's completion cache threshold,
 	  ;; cache the result
 	  (when (and (not no-cache)
-		     (dictree--query-cacheparam query-type dic rankfun)
-		   (or (eq (dictree--query-cacheparam query-type dic rankfun)
+		     (dictree--query-cacheparam query-type dic rank-function)
+		   (or (eq (dictree--query-cacheparam
+			    query-type dic rank-function)
 			   t)
 		       (> time (dictree--query-cacheparam
-				query-type dic rankfun))))
+				query-type dic rank-function))))
 	  (setf (dictree-modified dic) t)
 	  (puthash (cons arg reverse)
 		   (dictree--cache-create cmpl maxnum)
-		   (dictree--query-cache query-type dic rankfun))))))
+		   (dictree--query-cache query-type dic rank-function))))))
 
       ;; merge new completion into completions list
       (setq completions
 	    (dictree--merge
 	     completions cmpl
-	     (or rankfun
-		 `(lambda (a b)
-		    (,(eval (macroexpand
-			     `(trie-construct-sortfun
-			       ,(dictree-comparison-function dict))))
-		     (car a) (car b))))
+	     (if rank-function
+		 (eval (macroexpand `(dictree--wrap-rankfun ,rank-function)))
+	       `(lambda (a b)
+		  (,(eval (macroexpand
+			   `(trie-construct-sortfun
+			     ,(dictree-comparison-function dict))))
+		   (car a) (car b))))
 	     nil maxnum))
       )
     completions))
@@ -1698,19 +1701,20 @@ Returns nil if the stack is empty."
 
 
 (defun dictree--do-query (query-type dict arg
-				     &optional rankfun maxnum reverse filter)
+			  &optional rank-function maxnum reverse filter)
   ;; Return first MAXNUM results of running QUERY-TYPE on DICT that satisfy
-  ;; FILTER, ordered according to RANKFUN (defaulting to "lexical" order).
+  ;; FILTER, ordered according to RANK-FUNCTION (defaulting to "lexical"
+  ;; order).
 
   ;; for a meta-dict, use a dictree-stack
   (if (dictree--meta-dict-p dict)
       (let ((stack (funcall (dictree--query-stackfun query-type)
 			    dict arg reverse))
-	    (heap (when rankfun
+	    (heap (when rank-function
 		    (heap-create     ; heap order is inverse of rank order
 			(if reverse
-			    rankfun
-			  (lambda (a b) (not (funcall rankfun a b))))
+			    rank-function
+			  (lambda (a b) (not (funcall rank-function a b))))
 			(1+ maxnum))))
 	    (i 0) cmpl completions)
 	;; pop MAXNUM completions from the stack
@@ -1718,11 +1722,11 @@ Returns nil if the stack is empty."
 		    (setq cmpl (dictree-stack-pop stack)))
 	  ;; check completion passes FILTER
 	  (when (or (null filter) (funcall filter cmpl))
-	    (if rankfun
+	    (if rank-function
 		(heap-add heap cmpl)   ; for ranked query, add to heap
 	      (push cmpl completions)) ; for lexical query, add to list
 	    (incf i)))
-	(if (null rankfun)
+	(if (null rank-function)
 	    ;; for lexical query, reverse and return completion list (we built
 	    ;; it backwards)
 	    (nreverse completions)
@@ -1739,8 +1743,8 @@ Returns nil if the stack is empty."
     ;; Note: could use a dictree-stack here too - would it be more efficient?
     (funcall (dictree--query-triefun query-type)
 	     (dictree--trie dict) arg
-	     (when rankfun
-	       (eval (macroexpand `(dictree--wrap-rankfun ,rankfun))))
+	     (when rank-function
+	       (eval (macroexpand `(dictree--wrap-rankfun ,rank-function))))
 	     maxnum reverse filter)))
 
 
@@ -1753,7 +1757,7 @@ Returns nil if the stack is empty."
 			 rank-function maxnum reverse no-cache filter)
   "Return an alist containing all completions of sequence PREFIX
 from dictionary DICT, along with their associated data, sorted
-according to RANKFUN (defaulting to \"lexical\" order, i.e. the
+according to RANK-FUNCTION (defaulting to \"lexical\" order, i.e. the
 order defined by the dictionary's comparison function,
 cf. `dictree-create'). If no completions are found, return nil.
 
