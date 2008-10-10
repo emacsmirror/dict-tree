@@ -1039,7 +1039,8 @@ Returns non-nil if KEY was deleted, nil if KEY was not in DICT."
 	      (dictree--meta-dict-list dict)))))
 
     ;; return deleted key/data pair
-    (cons (car deleted) (dictree--unwrap-data (cdr deleted)))))
+    (when deleted
+      (cons (car deleted) (dictree--unwrap-data (cdr deleted))))))
 
 
 
@@ -1372,11 +1373,13 @@ descending order if REVERSE is non-nil."
 	    dictree-mapf--accumulate)
 	(while (setq dictree-mapf--entry
 		     (dictree-stack-pop dictree-mapf--stack))
-	  (funcall dictree-mapf--combinator
-		   (funcall dictree-mapf--function
-			    (car dictree-mapf--entry)
-			    (cdr dictree-mapf--entry)))))
-      )))
+	  (setq dictree-mapf--accumulate
+		(funcall dictree-mapf--combinator
+			 (funcall dictree-mapf--function
+				  (car dictree-mapf--entry)
+				  (cdr dictree-mapf--entry))
+			 dictree-mapf--accumulate)))
+	dictree-mapf--accumulate))))
 
 
 
