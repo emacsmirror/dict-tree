@@ -1695,7 +1695,7 @@ Returns nil if the stack is empty."
 	       `(lambda (a b)
 		  (,(eval (macroexpand
 			   `(trie-construct-sortfun
-			     ,(dictree-comparison-function dict))))
+			     ,(dictree-comparison-function (car dict)))))
 		   (car a) (car b))))
 	     nil maxnum))
       )
