@@ -367,6 +367,7 @@ If START or END is negative, it counts from the end."
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
 		  &aux
+		  (dictname (when name (symbol-name name)))
 		  (dictlist
 		   (mapcar
 		    (lambda (dic)
@@ -633,7 +634,7 @@ structure. See `trie-create' for details."
 
   (let ((dict
 	 (dictree--create
-	  filename name autosave unlisted
+	  filename (when name (symbol-name name)) autosave unlisted
 	  comparison-function insert-function rank-function
 	  cache-policy cache-update-policy
 	  lookup-cache-threshold
@@ -646,9 +647,10 @@ structure. See `trie-create' for details."
     ;; store dictionary in variable NAME
     (when name (set name dict))
     ;; add it to loaded dictionary list, unless it's unlisted
-    (unless unlisted
+    (unless (or (null name) unlisted)
       (push dict dictree-loaded-list)
-      (provide name))
+;      (provide name)
+      )
     dict))
 
 
@@ -766,7 +768,7 @@ underlying data structure. See `trie-create' for details."
 
   (let ((dict
 	 (dictree--create-custom
-	  filename name autosave unlisted
+	  filename (when name (symbol-name name)) autosave unlisted
 	  comparison-function insert-function rank-function
 	  cache-policy cache-update-policy
 	  lookup-cache-threshold
@@ -787,9 +789,10 @@ underlying data structure. See `trie-create' for details."
     ;; store dictionary in variable NAME
     (when name (set name dict))
     ;; add it to loaded dictionary list, unless it's unlisted
-    (unless unlisted
+    (unless (or (null name) unlisted)
       (push dict dictree-loaded-list)
-      (provide name))
+;      (provide name)
+      )
     dict))
 
 
@@ -823,7 +826,8 @@ The other arguments are as for `dictree-create'."
 
   (let ((dict
 	 (dictree--meta-dict-create
-	  dictionary-list filename name autosave unlisted
+	  dictionary-list filename (when name (symbol-name name))
+	  autosave unlisted
 	  combine-function
 	  cache-policy cache-update-policy
 	  lookup-cache-threshold
@@ -833,9 +837,10 @@ The other arguments are as for `dictree-create'."
     ;; store dictionary in variable NAME
     (when name (set name dict))
     ;; add it to loaded dictionary list, unless it's unlisted
-    (unless unlisted
+    (unless (or (null name) unlisted)
       (push dict dictree-loaded-list)
-      (provide name))
+;      (provide name)
+      )
     ;; update meta-dict-list cells of constituent dictionaries
     (mapc
      (lambda (dic)
@@ -1226,7 +1231,7 @@ is ignored in that case)."
 ;; ----------------------------------------------------------------
 ;;                        Retrieving data
 
-(defun dictree-lookup (dict key &optional nilflag)
+(defun dictree-member (dict key &optional nilflag)
   "Return the data associated with KEY in dictionary DICT,
 or nil if KEY is not in the dictionary.
 
@@ -1235,11 +1240,12 @@ nil if KEY does not exist in TREE. This allows a non-existent KEY
 to be distinguished from an element with a null association. (See
 also `dictree-member-p' for testing existence alone.)"
   (let ((data (dictree--lookup dict key nilflag)))
-    (unless (eq data nilflag)
+    (if (eq data nilflag)
+	nilflag
       (dictree--cell-data data))))
 
 
-(defalias 'dictree-member 'dictree-lookup)
+(defalias 'dictree-lookup 'dictree-member)
 
 
 (defun dictree-member-p (dict key)
@@ -2162,8 +2168,7 @@ NOT be saved even if its autosave flag is set."
 		       (format
 			"Dictionary %s modified. Save before unloading? "
 			(dictree-name dict))))))
-    (dictree-save dict)
-    (setf (dictree-modified dict) nil))
+    (dictree-save dict))
 
   ;; if unloading a meta-dict, remove reference to it from constituent
   ;; dictionaries' meta-dict-list cell
@@ -2395,16 +2400,26 @@ NOT be saved even if its autosave flag is set."
     (setf (dictree--meta-dict-list tmpdict) nil)
 
     ;; write lisp code that generates the dictionary object
-    (insert "(eval-when-compile (require 'cl))\n")
-    (insert "(require 'dict-tree)\n")
-    (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
-    (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n")
-    (insert hashcode)
-    (insert "(setf (dictree-filename " dictname ")\n"
-	    "      (locate-library \"" dictname "\"))\n")
-    (insert "(unless (memq " dictname " dictree-loaded-list)\n"
-	    "  (push " dictname " dictree-loaded-list))\n")
-    (insert "(provide '" dictname ")\n")))
+    (let ((restore-print-circle print-circle)
+	  (restore-print-level print-level)
+	  (restore-print-length print-length))
+      (setq print-circle nil
+	    print-level nil
+	    print-length nil)
+      (insert "(eval-when-compile (require 'cl))\n")
+      (insert "(require 'dict-tree)\n")
+      (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
+      (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n")
+      (insert hashcode)
+      (insert "(setf (dictree-filename " dictname ")\n"
+	      "      (locate-library \"" dictname "\"))\n")
+      (insert "(unless (memq " dictname " dictree-loaded-list)\n"
+	      "  (push " dictname " dictree-loaded-list))\n")
+;      (insert "(provide '" dictname ")\n")
+      (setq print-circle restore-print-circle
+	    print-level restore-print-level
+	    print-length restore-print-length)
+      )))
 
 
 
@@ -2514,7 +2529,8 @@ giving it the name DICTNAME."
 	    " (locate-library \"" dictname "\"))\n")
     (insert "(unless (memq " dictname " dictree-loaded-list)"
 	    " (push " dictname " dictree-loaded-list))\n")
-        (insert "(provide '" dictname ")\n")))
+;        (insert "(provide '" dictname ")\n")
+    ))
 
 
 
