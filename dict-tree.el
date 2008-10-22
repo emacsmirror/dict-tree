@@ -367,7 +367,6 @@ If START or END is negative, it counts from the end."
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
 		  &aux
-		  (dictname (when name (symbol-name name)))
 		  (dictlist
 		   (mapcar
 		    (lambda (dic)
@@ -516,6 +515,7 @@ If START or END is negative, it counts from the end."
 ;;     (dictree--merge (dictree--do-merge-sort list1 (/ len 2) sortfun combfun)
 ;; 		    (dictree--do-merge-sort list2 (/ len 2) sortfun combfun)
 ;; 		    sortfun combfun)))
+
 
 
 
@@ -2761,15 +2761,16 @@ data can not be used to recreate the dictionary using
 
 Prompt with PROMPT. By default, return DEFAULT. If DICTLIST is
 supplied, only complete on dictionaries in that list."
-  (let (dictnames)
+  (let (dictnames dict)
     (mapc (lambda (dict)
 	    (unless (or (null (dictree-name dict))
 			(member (dictree-name dict) dictnames))
 	      (push (list (dictree-name dict)) dictnames)))
 	  (or dictlist dictree-loaded-list))
-    (eval (intern-soft
-	   (completing-read prompt dictnames
-			    nil t nil 'dictree-history default)))))
+    (setq dict (completing-read prompt dictnames nil t nil
+				'dictree-history default))
+    ;; needed to work around bug with (intern-soft "") under windoze
+    (unless (string= dict "") (eval (intern-soft dict)))))
 
 
 
