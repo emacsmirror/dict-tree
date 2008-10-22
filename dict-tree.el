@@ -2761,16 +2761,15 @@ data can not be used to recreate the dictionary using
 
 Prompt with PROMPT. By default, return DEFAULT. If DICTLIST is
 supplied, only complete on dictionaries in that list."
-  (let (dictnames dict)
+  (let (dictnames)
     (mapc (lambda (dict)
 	    (unless (or (null (dictree-name dict))
 			(member (dictree-name dict) dictnames))
 	      (push (list (dictree-name dict)) dictnames)))
 	  (or dictlist dictree-loaded-list))
-    (setq dict (completing-read prompt dictnames nil t nil
-				'dictree-history default))
-    ;; needed to work around bug with (intern-soft "") under windoze
-    (unless (string= dict "") (eval (intern-soft dict)))))
+    (eval (intern-soft
+	   (completing-read prompt dictnames nil t nil
+			    'dictree-history default)))))
 
 
 
