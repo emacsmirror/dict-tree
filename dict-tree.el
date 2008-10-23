@@ -583,7 +583,7 @@ than the corresponding CACHE-THRESHOLD (since those are likely to
 be the slower ones in that case). The setting 'both requires both
 conditions to be satisfied simultaneously.
 
-CACHE-UPDATE-POLICY should be a symbol ('update or 'delete),
+CACHE-UPDATE-POLICY should be a symbol ('synchronize or 'delete),
 which determines how the caches are updated when data is inserted
 or deleted. The former updates tainted cache entries, which makes
 queries faster but insertion and deleteion slower, whereas the
@@ -1059,18 +1059,18 @@ TEST returns non-nil."
 
     ;; synchronise the lookup cache if dict is a meta-dictionary,
     ;; since it's not done automatically
-    (cond
-     ;; if updating dirty cache entries...
-     ((eq (dictree-cache-update-policy dict) 'delete)
-      (when (and (dictree--meta-dict-p dict)
-		 (dictree--lookup-cache-threshold dict)
-		 (gethash key (dictree--lookup-cache dict)))
-	(if deleted
-	    (remhash key (dictree--lookup-cache dict))
-	  (puthash key newdata (dictree--lookup-cache dict)))))
-     ;; if deleting dirty cache entries...
-     (t  ; (eq (dictree-cache-update-policy dict) 'delete)
-      (remhash key (dictree-complete-cache dict))))
+    (when (and (dictree--meta-dict-p dict)
+	       (dictree--lookup-cache-threshold dict))
+      (cond
+       ;; if updating dirty cache entries...
+       ((eq (dictree-cache-update-policy dict) 'synchronize)
+	(when (gethash key (dictree--lookup-cache dict))
+	  (if deleted
+	      (remhash key (dictree--lookup-cache dict))
+	    (puthash key newdata (dictree--lookup-cache dict)))))
+       ;; if deleting dirty cache entries...
+       (t  ; (eq (dictree-cache-update-policy dict) 'delete)
+	(remhash key (dictree-complete-cache dict)))))
 
 
     ;; synchronize the completion cache, if it exists
@@ -1133,7 +1133,7 @@ TEST returns non-nil."
 	  (cond
 
 	   ;; if updating dirty cache entries...
-	   ((eq (dictree-cache-update-policy dict) 'update)
+	   ((eq (dictree-cache-update-policy dict) 'synchronize)
 	    (when (setq cache (gethash (cons prefix reverse)
 				       (dictree-complete-ranked-cache dict)))
 	      (setq completions (dictree--cache-completions cache))
