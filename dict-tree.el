@@ -1751,9 +1751,9 @@ Returns nil if the stack is empty."
 		   (or (null (dictree--cache-maxnum cache))
 		       (> (dictree--cache-maxnum cache) maxnum)))
 	  (setcdr (nthcdr (1- maxnum) completions) nil)))
-
-       ;; if there was nothing useful in the cache, do query and time it
-       (t
+       
+       
+       (t  ;; if there was nothing useful in the cache, do query and time it
 	(let (time)
 	  (setq time (float-time))
 	  (setq cmpl (dictree--do-query
@@ -1766,12 +1766,12 @@ Returns nil if the stack is empty."
 		     (or (eq (dictree--query-cacheparam
 			      query-type dic rank-function)
 			     t)
-			 (and (or (eq (dictree-cache-policy dict) 'time)
-				  (eq (dictree-cache-policy dict) 'both))
+			 (and (or (eq (dictree-cache-policy dic) 'time)
+				  (eq (dictree-cache-policy dic) 'both))
 			      (>= time (dictree--query-cacheparam
 					query-type dic rank-function)))
-			 (and (or (eq (dictree-cache-policy dict) 'length)
-				  (eq (dictree-cache-policy dict) 'both))
+			 (and (or (eq (dictree-cache-policy dic) 'length)
+				  (eq (dictree-cache-policy dic) 'both))
 			  ;; note: we cache completions of *shorter* keys,
 			  ;;       because those are likely to be slower
 			      (<= (length arg)
@@ -1793,8 +1793,7 @@ Returns nil if the stack is empty."
 			   `(trie-construct-sortfun
 			     ,(dictree-comparison-function (car dict)))))
 		   (car a) (car b))))
-	     nil maxnum))
-      )
+	     nil maxnum)))
     completions))
 
 
