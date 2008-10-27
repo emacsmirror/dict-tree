@@ -264,10 +264,8 @@ If START or END is negative, it counts from the end."
 		  &aux
 		  (modified nil)
 		  (trie (trie-create comparison-function))
-		  (insfun (eval (macroexpand
-				 `(dictree--wrap-insfun ,insert-function))))
-		  (rankfun (eval (macroexpand
-				  `(dictree--wrap-rankfun ,rank-function))))
+		  (insfun (dictree--wrap-insfun insert-function))
+		  (rankfun (dictree--wrap-rankfun rank-function))
 		  (lookup-cache
 		   (if lookup-cache-threshold
 		       (make-hash-table :test 'equal)
@@ -316,10 +314,8 @@ If START or END is negative, it counts from the end."
 				     :stack-createfun stack-createfun
 				     :stack-popfun stack-popfun
 				     :stack-emptyfun stack-emptyfun))
-		  (insfun (eval (macroexpand
-				 `(dictree--wrap-insfun ,insert-function))))
-		  (rankfun (eval (macroexpand
-				  `(dictree--wrap-rankfun ,rank-function))))
+		  (insfun (dictree--wrap-insfun insert-function))
+		  (rankfun (dictree--wrap-rankfun rank-function))
 		  (lookup-cache
 		   (if lookup-cache-threshold
 		       (make-hash-table :test 'equal)
@@ -345,7 +341,6 @@ If START or END is negative, it counts from the end."
   data-savefun data-loadfun
   plist-savefun plist-loadfun
   trie meta-dict-list)
-
 
 
 (defstruct
@@ -375,9 +370,7 @@ If START or END is negative, it counts from the end."
 		       ((symbolp dic) (eval dic))
 		       (t (error "Invalid object in DICTIONARY-LIST"))))
 		    dictionary-list))
-		  (combfun (eval (macroexpand
-				  `(dictree--wrap-combfun
-				    ,combine-function))))
+		  (combfun (dictree--wrap-combfun combine-function))
 		  ))
    (:copier nil))
   name filename autosave modified
@@ -404,6 +397,37 @@ If START or END is negative, it counts from the end."
     (setq accumulate (cons (dictree--trie dict) accumulate))))
 
 
+(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+  ;; return wrapped insfun to deal with data wrapping
+  (byte-compile
+   `(lambda (new old)
+      ;; FIXME: should use (setf (dictree--cell-data old) ...) here, but can't
+      ;;        figure out how to get that to be expanded at compile-time to
+      ;;        avoid run-time dependency on 'cl package!!?!??!!!
+      (setcar old (,insfun (dictree--cell-data new)
+			   (dictree--cell-data old)))
+      old)))
+
+(defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
+  ;; return wrapped rankfun to deal with data wrapping
+  (byte-compile
+   `(lambda (a b)
+      (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
+		(cons (car b) (dictree--cell-data (cdr b)))))))
+
+(defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
+  ;; return wrapped filter function to deal with data wrapping
+  (byte-compile
+   `(lambda (key data) (,filter key (dictree--cell-data data)))))
+
+(defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
+  (byte-compile
+   `(lambda (cell1 cell2)
+      (cons (,combfun (dictree--cell-data cell1)
+		      (dictree--cell-data cell2))
+	    (append (list (dictree--cell-metadata cell1))
+		    (list (dictree--cell-metadata cell2)))))))
+
 
 (defmacro dictree--cell-create (data &optional meta-data)
   ;; INTERNAL USE ONLY
@@ -418,30 +442,6 @@ If START or END is negative, it counts from the end."
 (defmacro dictree--cell-plist (cell)  ; INTERNAL USE ONLY
   `(cdr ,cell))
 
-(defmacro dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
-  ;; return wrapped insfun to deal with data wrapping
-  `(lambda (new old)
-     (setf (dictree--cell-data old)
-	   (,insfun (dictree--cell-data new)
-		    (dictree--cell-data old)))
-     old))
-
-(defmacro dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
-  ;; return wrapped rankfun to deal with data wrapping
-  `(lambda (a b)
-     (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
-	       (cons (car b) (dictree--cell-data (cdr b))))))
-
-(defmacro dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
-  ;; return wrapped filter function to deal with data wrapping
-  `(lambda (key data) (,filter key (dictree--cell-data data))))
-
-(defmacro dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
-  `(lambda (cell1 cell2)
-     (cons (,combfun (dictree--cell-data cell1)
-		     (dictree--cell-data cell2))
-	   (append (list (dictree--cell-metadata cell1))
-		   (list (dictree--cell-metadata cell2))))))
 
 ;; Construct and return a completion cache entry
 (defalias 'dictree--cache-create 'cons)  ; INTERNAL USE ONLY
@@ -457,7 +457,6 @@ If START or END is negative, it counts from the end."
 
 ;; Set the completions list for cache entry CACHE
 (defalias 'dictree--set-cache-maxnum 'setcdr)  ; INTERNAL USE ONLY
-
 
 
 (defun dictree--merge (list1 list2 cmpfun &optional combfun maxnum)
@@ -989,8 +988,7 @@ becomes the new association for KEY."
 	    (trie-insert
 	     (dictree--trie dict) key (dictree--cell-create data)
 	     (or (and insert-function
-		      (eval (macroexpand
-			     `(dictree--wrap-insfun ,insert-function))))
+		      (dictree--wrap-insfun insert-function))
 		 (dictree--insfun dict))))
       ;; update dictionary's caches
       (dictree--update-cache dict key newdata)
@@ -1732,7 +1730,7 @@ Returns nil if the stack is empty."
 	      (dictree--do-query
 	       query-type dic arg rank-function maxnum reverse
 	       (when filter
-		 (eval (macroexpand `(dictree--wrap-filter ,filter)))))))
+		 (dictree--wrap-filter filter)))))
 
 
        ;; if there's a cached result with enough completions, use it
@@ -1751,8 +1749,8 @@ Returns nil if the stack is empty."
 		   (or (null (dictree--cache-maxnum cache))
 		       (> (dictree--cache-maxnum cache) maxnum)))
 	  (setcdr (nthcdr (1- maxnum) completions) nil)))
-       
-       
+
+
        (t  ;; if there was nothing useful in the cache, do query and time it
 	(let (time)
 	  (setq time (float-time))
@@ -1787,11 +1785,10 @@ Returns nil if the stack is empty."
 	    (dictree--merge
 	     completions cmpl
 	     (if rank-function
-		 (eval (macroexpand `(dictree--wrap-rankfun ,rank-function)))
+		 (dictree--wrap-rankfun rank-function)
 	       `(lambda (a b)
-		  (,(eval (macroexpand
-			   `(trie-construct-sortfun
-			     ,(dictree-comparison-function (car dict)))))
+		  (,(trie-construct-sortfun
+		     (dictree-comparison-function (car dict)))
 		   (car a) (car b))))
 	     nil maxnum)))
     completions))
@@ -1842,8 +1839,7 @@ Returns nil if the stack is empty."
     ;; Note: could use a dictree-stack here too - would it be more efficient?
     (funcall (dictree--query-triefun query-type)
 	     (dictree--trie dict) arg
-	     (when rank-function
-	       (eval (macroexpand `(dictree--wrap-rankfun ,rank-function))))
+	     (when rank-function (dictree--wrap-rankfun rank-function))
 	     maxnum reverse filter)))
 
 
