@@ -232,10 +232,18 @@ If START or END is negative, it counts from the end."
   "Stores list of loaded dictionaries.")
 
 
-(defmacro dictree--cell-create (data &optional meta-data)
+;; (defstruct
+;;   (dictree--cell
+;;    :named
+;;    (:constructor nil)
+;;    (:constructor dictree--cell-create
+;; 		 (data &optional plist)))
+;;   data plist)
+
+(defmacro dictree--cell-create (data &optional plist)
   ;; INTERNAL USE ONLY
   ;; wrap the data in a cons cell
-  `(cons ,data ,meta-data))
+  `(cons ,data ,plist))
 
 ;; get data component from data cons cell
 (defmacro dictree--cell-data (cell)  ; INTERNAL USE ONLY
@@ -262,52 +270,54 @@ If START or END is negative, it counts from the end."
 (defalias 'dictree--set-cache-maxnum 'setcdr)  ; INTERNAL USE ONLY
 
 
-(defmacro dictree--wrap-insfun-2 (f-2)
-  ;; construct body of `dictree--wrap-insfun'
-  (let ((comma-f `(nil ,f-2)))
-    (setcar comma-f ',)
-    (macroexpand-all
-     `(lambda (new old)
-	(setf (dictree--cell-data old)
-	      (,comma-f (dictree--cell-data new)
-			(dictree--cell-data old)))))))
+;; (defmacro dictree--wrap-insfun-2 (f-2)
+;;   ;; construct body of `dictree--wrap-insfun'
+;;   (let ((comma-f `(nil ,f-2)))
+;;     (setcar comma-f ',)
+;;     (macroexpand-all
+;;      `(lambda (new old)
+;; 	(setf (dictree--cell-data old)
+;; 	      (,comma-f (dictree--cell-data new)
+;; 			(dictree--cell-data old)))))))
 
-(defmacro dictree--wrap-insfun-1 (f-1)
-  ;; return body of `dictree--wrap-insfun'
-  `(eval (backquote ,(macroexpand `(dictree--wrap-insfun-2 ,f-1)))))
-
-(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
-  ;; return wrapped insfun to deal with data wrapping
-  (dictree--wrap-insfun-1 insfun))
-
-(eval-when-compile
-  (let ((buff (get-buffer "*Compile-Log*")))
-    (when buff
-      (save-excursion
-	(set-buffer buff)
-	(setq buffer-read-only nil)
-	(goto-char (point-max))
-	(insert
-	 "\nThe above warning is true, though it's not obvious from the
-source code! Be that as it may, I can't fix this until someone
-explains to me how to define `dictree--wrap-insfun' without using
-old-style backquotes, whilst still ensuring that the `setf' in
-the `dictree--wrap-insfun-2' macro is expanded at compile-time
-rather than run-time.
-  -- Toby Cubitt\n")
-	  (setq buffer-read-only t)))))
-
+;; (defmacro dictree--wrap-insfun-1 (f-1)
+;;   ;; return body of `dictree--wrap-insfun'
+;;   `(eval (backquote ,(macroexpand-all `(dictree--wrap-insfun-2 ,f-1)))))
 
 ;; (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
 ;;   ;; return wrapped insfun to deal with data wrapping
-;;   (byte-compile
-;;    `(lambda (new old)
-;;       ;; FIXME: should use (setf (dictree--cell-data old) ...) here, but can't
-;;       ;;        figure out how to get that to be expanded at compile-time to
-;;       ;;        avoid run-time dependency on 'cl package!!?!??!!!
-;;       (setcar old (,insfun (dictree--cell-data new)
-;; 			   (dictree--cell-data old)))
-;;       old)))
+;;   (byte-compile (dictree--wrap-insfun-1 insfun)))
+
+;; (eval-when-compile
+;;   (let ((buff (get-buffer "*Compile-Log*")))
+;;     (when buff
+;;       (save-excursion
+;; 	(set-buffer buff)
+;; 	(setq buffer-read-only nil)
+;; 	(goto-char (point-max))
+;; 	(insert
+;; 	 "\nThe above warning is true, though it's not obvious from the
+;; source code! Be that as it may, I can't fix this until someone
+;; explains to me how to define `dictree--wrap-insfun' without using
+;; old-style backquotes, whilst still ensuring that the `setf' in
+;; the `dictree--wrap-insfun-2' macro is expanded at compile-time
+;; rather than run-time.
+;;   -- Toby Cubitt\n")
+;; 	  (setq buffer-read-only t)))))
+
+(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+  ;; return wrapped insfun to deal with data wrapping
+  (byte-compile
+   `(lambda (new old)
+      ;; FIXME: should use (setf (dictree--cell-data old) ...) here, but can't
+      ;;        figure out how to get that to be expanded at compile-time, to
+      ;;        avoid run-time dependency on 'cl package!!?!??!!!??!?!!??!!!
+      ;;        (The `dictree--cell-data' aren't expanded at compile-time
+      ;;        either, for the same reason.)
+      (setcar old (,insfun (dictree--cell-data new)
+			   (dictree--cell-data old)))
+      old)))
+
 
 (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
   ;; return wrapped rankfun to deal with data wrapping
