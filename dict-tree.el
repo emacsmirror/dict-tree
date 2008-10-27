@@ -232,9 +232,103 @@ If START or END is negative, it counts from the end."
   "Stores list of loaded dictionaries.")
 
 
-(defsubst dictree-p (obj)
-  "Return t if OBJ is a dictionary tree, nil otherwise."
-  (or (dictree--p obj) (dictree--meta-dict-p obj)))
+(defmacro dictree--cell-create (data &optional meta-data)
+  ;; INTERNAL USE ONLY
+  ;; wrap the data in a cons cell
+  `(cons ,data ,meta-data))
+
+;; get data component from data cons cell
+(defmacro dictree--cell-data (cell)  ; INTERNAL USE ONLY
+  `(car ,cell))
+
+;; get meta-data component of data cons cell
+(defmacro dictree--cell-plist (cell)  ; INTERNAL USE ONLY
+  `(cdr ,cell))
+
+
+;; Construct and return a completion cache entry
+(defalias 'dictree--cache-create 'cons)  ; INTERNAL USE ONLY
+
+;; Return the completions list for cache entry CACHE
+(defalias 'dictree--cache-completions 'car)  ; INTERNAL USE ONLY
+
+;; Return the max number of completions returned for cache entry CACHE
+(defalias 'dictree--cache-maxnum 'cdr)  ; INTERNAL USE ONLY
+
+;; Set the completions list for cache entry CACHE
+(defalias 'dictree--set-cache-completions 'setcar)  ; INTERNAL USE ONLY
+
+;; Set the completions list for cache entry CACHE
+(defalias 'dictree--set-cache-maxnum 'setcdr)  ; INTERNAL USE ONLY
+
+
+(defmacro dictree--wrap-insfun-2 (f-2)
+  ;; construct body of `dictree--wrap-insfun'
+  (let ((comma-f `(nil ,f-2)))
+    (setcar comma-f ',)
+    (macroexpand-all
+     `(lambda (new old)
+	(setf (dictree--cell-data old)
+	      (,comma-f (dictree--cell-data new)
+			(dictree--cell-data old)))))))
+
+(defmacro dictree--wrap-insfun-1 (f-1)
+  ;; return body of `dictree--wrap-insfun'
+  `(eval (backquote ,(macroexpand `(dictree--wrap-insfun-2 ,f-1)))))
+
+(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+  ;; return wrapped insfun to deal with data wrapping
+  (dictree--wrap-insfun-1 insfun))
+
+(eval-when-compile
+  (let ((buff (get-buffer "*Compile-Log*")))
+    (when buff
+      (save-excursion
+	(set-buffer buff)
+	(setq buffer-read-only nil)
+	(goto-char (point-max))
+	(insert
+	 "\nThe above warning is true, though it's not obvious from the
+source code! Be that as it may, I can't fix this until someone
+explains to me how to define `dictree--wrap-insfun' without using
+old-style backquotes, whilst still ensuring that the `setf' in
+the `dictree--wrap-insfun-2' macro is expanded at compile-time
+rather than run-time.
+  -- Toby Cubitt\n")
+	  (setq buffer-read-only t)))))
+
+
+;; (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+;;   ;; return wrapped insfun to deal with data wrapping
+;;   (byte-compile
+;;    `(lambda (new old)
+;;       ;; FIXME: should use (setf (dictree--cell-data old) ...) here, but can't
+;;       ;;        figure out how to get that to be expanded at compile-time to
+;;       ;;        avoid run-time dependency on 'cl package!!?!??!!!
+;;       (setcar old (,insfun (dictree--cell-data new)
+;; 			   (dictree--cell-data old)))
+;;       old)))
+
+(defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
+  ;; return wrapped rankfun to deal with data wrapping
+  (byte-compile
+   `(lambda (a b)
+      (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
+		(cons (car b) (dictree--cell-data (cdr b)))))))
+
+(defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
+  ;; return wrapped filter function to deal with data wrapping
+  (byte-compile
+   `(lambda (key data) (,filter key (dictree--cell-data data)))))
+
+(defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
+  (byte-compile
+   `(lambda (cell1 cell2)
+      (cons (,combfun (dictree--cell-data cell1)
+		      (dictree--cell-data cell2))
+	    (append (dictree--cell-plist cell1)
+		    (dictree--cell-plist cell2))))))
+
 
 
 (defstruct
@@ -395,68 +489,6 @@ If START or END is negative, it counts from the end."
   (if (dictree-meta-dict-p dict)
       (mapc 'dictree--do-trielist (dictree--meta-dict-dictlist dict))
     (setq accumulate (cons (dictree--trie dict) accumulate))))
-
-
-(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
-  ;; return wrapped insfun to deal with data wrapping
-  (byte-compile
-   `(lambda (new old)
-      ;; FIXME: should use (setf (dictree--cell-data old) ...) here, but can't
-      ;;        figure out how to get that to be expanded at compile-time to
-      ;;        avoid run-time dependency on 'cl package!!?!??!!!
-      (setcar old (,insfun (dictree--cell-data new)
-			   (dictree--cell-data old)))
-      old)))
-
-(defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
-  ;; return wrapped rankfun to deal with data wrapping
-  (byte-compile
-   `(lambda (a b)
-      (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
-		(cons (car b) (dictree--cell-data (cdr b)))))))
-
-(defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
-  ;; return wrapped filter function to deal with data wrapping
-  (byte-compile
-   `(lambda (key data) (,filter key (dictree--cell-data data)))))
-
-(defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
-  (byte-compile
-   `(lambda (cell1 cell2)
-      (cons (,combfun (dictree--cell-data cell1)
-		      (dictree--cell-data cell2))
-	    (append (list (dictree--cell-metadata cell1))
-		    (list (dictree--cell-metadata cell2)))))))
-
-
-(defmacro dictree--cell-create (data &optional meta-data)
-  ;; INTERNAL USE ONLY
-  ;; wrap the data in a cons cell
-  `(cons ,data ,meta-data))
-
-;; get data component from data cons cell
-(defmacro dictree--cell-data (cell)  ; INTERNAL USE ONLY
-  `(car ,cell))
-
-;; get meta-data component of data cons cell
-(defmacro dictree--cell-plist (cell)  ; INTERNAL USE ONLY
-  `(cdr ,cell))
-
-
-;; Construct and return a completion cache entry
-(defalias 'dictree--cache-create 'cons)  ; INTERNAL USE ONLY
-
-;; Return the completions list for cache entry CACHE
-(defalias 'dictree--cache-completions 'car)  ; INTERNAL USE ONLY
-
-;; Return the max number of completions returned for cache entry CACHE
-(defalias 'dictree--cache-maxnum 'cdr)  ; INTERNAL USE ONLY
-
-;; Set the completions list for cache entry CACHE
-(defalias 'dictree--set-cache-completions 'setcar)  ; INTERNAL USE ONLY
-
-;; Set the completions list for cache entry CACHE
-(defalias 'dictree--set-cache-maxnum 'setcdr)  ; INTERNAL USE ONLY
 
 
 (defun dictree--merge (list1 list2 cmpfun &optional combfun maxnum)
@@ -769,6 +801,11 @@ The other arguments are as for `dictree-create'."
     dict))
 
 
+(defun dictree-p (obj)
+  "Return t if OBJ is a dictionary tree, nil otherwise."
+  (or (dictree--p obj) (dictree--meta-dict-p obj)))
+
+
 (defalias 'dictree-meta-dict-p 'dictree--meta-dict-p
   "Return t if argument is a meta-dictionary, nil otherwise.")
 
@@ -829,7 +866,7 @@ The other arguments are as for `dictree-create'."
        (setf (dictree--meta-dict-filename ,dict) ,filename)
      (setf (dictree--filename ,dict) ,filename)))
 
-(defsubst dictree-comparison-function (dict)
+(defun dictree-comparison-function (dict)
   "Return dictionary DICT's comparison function."
   (if (dictree--meta-dict-p dict)
       (dictree-comparison-function (car (dictree--meta-dict-dictlist dict)))
@@ -838,13 +875,13 @@ The other arguments are as for `dictree-create'."
 (defalias 'dictree-insert-function 'dictree--insert-function
   "Return the insertion function for dictionary DICT.")
 
-(defsubst dictree-rank-function (dict)
+(defun dictree-rank-function (dict)
   "Return the rank function for dictionary DICT"
   (if (dictree--meta-dict-p dict)
       (dictree-rank-function (car (dictree--meta-dict-dictlist dict)))
     (dictree--rank-function dict)))
 
-(defsubst dictree-rankfun (dict)
+(defun dictree-rankfun (dict)
   ;; Return the rank function for dictionary DICT
   (if (dictree--meta-dict-p dict)
       (dictree-rankfun (car (dictree--meta-dict-dictlist dict)))
