@@ -232,6 +232,29 @@ If START or END is negative, it counts from the end."
   "Stores list of loaded dictionaries.")
 
 
+;; Note: It would be more elegant to use a defstruct for the data cells, but
+;;       the problem is that the resulting setf in `dictree--wrap-insfun'
+;;       won't get expanded into the cell-data accessor function at
+;;       compile-time because it's burried inside a backquote construct. Not
+;;       only is it inelegant to have to expand macros at run-time whenever
+;;       `dictree--wrap-insfun' is called, but it also requires the 'cl-macs
+;;       package to be loaded at run-time rather than just at compile-time.
+
+;; wrap data in a cons cell
+(defalias 'dictree--cell-create 'cons)  ; INTERNAL USE ONLY
+
+;; get data component from data cons cell
+(defalias 'dictree--cell-data 'car)  ; INTERNAL USE ONLY
+
+;; get property list component from data cons cell
+(defalias 'dictree--cell-plist 'cdr)  ; INTERNAL USE ONLY
+
+;; set data component of data cons cell
+(defalias 'dictree--cell-set-data 'setcar)  ; INTERNAL USE ONLY
+
+;; set property list component of data cons cell
+(defalias 'dictree--cell-set-plist 'setcdr)  ; INTERNAL USE ONLY
+
 ;; (defstruct
 ;;   (dictree--cell
 ;;    :named
@@ -240,19 +263,11 @@ If START or END is negative, it counts from the end."
 ;; 		 (data &optional plist)))
 ;;   data plist)
 
-(defmacro dictree--cell-create (data &optional plist)
-  ;; INTERNAL USE ONLY
-  ;; wrap the data in a cons cell
-  `(cons ,data ,plist))
 
-;; get data component from data cons cell
-(defmacro dictree--cell-data (cell)  ; INTERNAL USE ONLY
-  `(car ,cell))
 
-;; get meta-data component of data cons cell
-(defmacro dictree--cell-plist (cell)  ; INTERNAL USE ONLY
-  `(cdr ,cell))
-
+;; Note: We *could* us a defstruct for the cache entries, but for something
+;;       this simple it doesn't seem worth it, especially given that we're
+;;       using the defalias approach anyway for the data cells (above).
 
 ;; Construct and return a completion cache entry
 (defalias 'dictree--cache-create 'cons)  ; INTERNAL USE ONLY
@@ -264,11 +279,20 @@ If START or END is negative, it counts from the end."
 (defalias 'dictree--cache-maxnum 'cdr)  ; INTERNAL USE ONLY
 
 ;; Set the completions list for cache entry CACHE
-(defalias 'dictree--set-cache-completions 'setcar)  ; INTERNAL USE ONLY
+(defalias 'dictree--cache-set-completions 'setcar)  ; INTERNAL USE ONLY
 
 ;; Set the completions list for cache entry CACHE
-(defalias 'dictree--set-cache-maxnum 'setcdr)  ; INTERNAL USE ONLY
+(defalias 'dictree--cache-set-maxnum 'setcdr)  ; INTERNAL USE ONLY
 
+
+
+(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+  ;; return wrapped insfun to deal with data wrapping
+  (byte-compile
+   `(lambda (new old)
+      (dictree--cell-set-data old (,insfun (dictree--cell-data new)
+					   (dictree--cell-data old)))
+      old)))
 
 ;; (defmacro dictree--wrap-insfun-2 (f-2)
 ;;   ;; construct body of `dictree--wrap-insfun'
@@ -304,19 +328,6 @@ If START or END is negative, it counts from the end."
 ;; rather than run-time.
 ;;   -- Toby Cubitt\n")
 ;; 	  (setq buffer-read-only t)))))
-
-(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
-  ;; return wrapped insfun to deal with data wrapping
-  (byte-compile
-   `(lambda (new old)
-      ;; FIXME: should use (setf (dictree--cell-data old) ...) here, but can't
-      ;;        figure out how to get that to be expanded at compile-time, to
-      ;;        avoid run-time dependency on 'cl package!!?!??!!!??!?!!??!!!
-      ;;        (The `dictree--cell-data' aren't expanded at compile-time
-      ;;        either, for the same reason.)
-      (setcar old (,insfun (dictree--cell-data new)
-			   (dictree--cell-data old)))
-      old)))
 
 
 (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
@@ -1142,7 +1153,7 @@ TEST returns non-nil."
 	       ;; if key was modified and was not in cached result, merge it
 	       ;; into the completion list, retaining only the first maxnum
 	       ((and (not deleted) (not cmpl))
-		(dictree--set-cache-completions
+		(dictree--cache-set-completions
 		 cache
 		 (dictree--merge
 		  (list (cons key newdata)) completions
@@ -1194,7 +1205,7 @@ TEST returns non-nil."
 	       ;; if key was modified and was not in cached result, merge it
 	       ;; into the completion list, retaining only the first maxnum
 	       ((and (not deleted) (not cmpl))
-		(dictree--set-cache-completions
+		(dictree--cache-set-completions
 		 cache
 		 (dictree--merge
 		  (list (cons key newdata)) completions
@@ -1208,7 +1219,7 @@ TEST returns non-nil."
 	       ;; at end of list re-run the same query to update the cache
 	       ((and (not deleted) cmpl)
 		(when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
-		(dictree--set-cache-completions
+		(dictree--cache-set-completions
 		 cache (sort completions (dictree-rankfun dict)))
 		(when (equal key (car (last completions)))
 		  (remhash (cons prefix reverse)
