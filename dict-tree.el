@@ -255,6 +255,10 @@ If START or END is negative, it counts from the end."
 ;; set property list component of data cons cell
 (defalias 'dictree--cell-set-plist 'setcdr)  ; INTERNAL USE ONLY
 
+;; define setf methods so we can use setf abstraction wherever possible
+(defsetf dictree--cell-data dictree--cell-set-data)
+(defsetf dictree--cell-plist dictree--cell-set-plist)
+
 ;; (defstruct
 ;;   (dictree--cell
 ;;    :named
