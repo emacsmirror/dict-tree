@@ -1048,7 +1048,7 @@ becomes the new association for KEY."
       ;; insert key in dictionary's ternary search tree
       (setq newdata
 	    (trie-insert
-	     (dictree--trie dict) key (dictree--cell-create data)
+	     (dictree--trie dict) key (dictree--cell-create data nil)
 	     (or (and insert-function
 		      (dictree--wrap-insfun insert-function))
 		 (dictree--insfun dict))))
