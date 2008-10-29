@@ -209,12 +209,12 @@ If START or END is negative, it counts from the end."
 
 
 ;; `goto-line' without messing around with mark and messages
-;; Note: this is a bug in simple.el; there's clearly a place for
-;;       non-interactive calls to goto-line from Lisp code, and
-;;       there's no warning against doing this. Yet goto-line *always*
-;;       calls push-mark, which usually *shouldn't* be invoked by
+;; Note: This is a bug in simple.el. There's clearly a place for
+;;       non-interactive calls to goto-line from Lisp code, and there's no
+;;       warning against doing this in the documentation. Yet goto-line
+;;       *always* calls push-mark, which usually *shouldn't* be invoked by
 ;;       Lisp programs, as its docstring warns.
-(defmacro dictree-goto-line (line)
+(defmacro dictree--goto-line (line)
   "Goto line LINE, counting from line 1 at beginning of buffer."
   `(progn
      (goto-char 1)
@@ -227,10 +227,12 @@ If START or END is negative, it counts from the end."
 ;;; ====================================================================
 ;;;  Internal functions and variables for use in the dictionary package
 
-
 (defvar dictree-loaded-list nil
   "Stores list of loaded dictionaries.")
 
+
+;; ----------------------------------------------------------------
+;;                   Dictionary data cell structures
 
 ;; Note: It would be more elegant to use a defstruct for the data cells, but
 ;;       the problem is that the resulting setf in `dictree--wrap-insfun'
@@ -259,15 +261,9 @@ If START or END is negative, it counts from the end."
 (defsetf dictree--cell-data dictree--cell-set-data)
 (defsetf dictree--cell-plist dictree--cell-set-plist)
 
-;; (defstruct
-;;   (dictree--cell
-;;    :named
-;;    (:constructor nil)
-;;    (:constructor dictree--cell-create
-;; 		 (data &optional plist)))
-;;   data plist)
 
-
+;; ----------------------------------------------------------------
+;;                 Dictionary cache entry structures
 
 ;; Note: We *could* us a defstruct for the cache entries, but for something
 ;;       this simple it doesn't seem worth it, especially given that we're
@@ -289,6 +285,8 @@ If START or END is negative, it counts from the end."
 (defalias 'dictree--cache-set-maxnum 'setcdr)  ; INTERNAL USE ONLY
 
 
+;; ----------------------------------------------------------------
+;;                     Wrapping functions
 
 (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
   ;; return wrapped insfun to deal with data wrapping
@@ -297,42 +295,6 @@ If START or END is negative, it counts from the end."
       (dictree--cell-set-data old (,insfun (dictree--cell-data new)
 					   (dictree--cell-data old)))
       old)))
-
-;; (defmacro dictree--wrap-insfun-2 (f-2)
-;;   ;; construct body of `dictree--wrap-insfun'
-;;   (let ((comma-f `(nil ,f-2)))
-;;     (setcar comma-f ',)
-;;     (macroexpand-all
-;;      `(lambda (new old)
-;; 	(setf (dictree--cell-data old)
-;; 	      (,comma-f (dictree--cell-data new)
-;; 			(dictree--cell-data old)))))))
-
-;; (defmacro dictree--wrap-insfun-1 (f-1)
-;;   ;; return body of `dictree--wrap-insfun'
-;;   `(eval (backquote ,(macroexpand-all `(dictree--wrap-insfun-2 ,f-1)))))
-
-;; (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
-;;   ;; return wrapped insfun to deal with data wrapping
-;;   (byte-compile (dictree--wrap-insfun-1 insfun)))
-
-;; (eval-when-compile
-;;   (let ((buff (get-buffer "*Compile-Log*")))
-;;     (when buff
-;;       (save-excursion
-;; 	(set-buffer buff)
-;; 	(setq buffer-read-only nil)
-;; 	(goto-char (point-max))
-;; 	(insert
-;; 	 "\nThe above warning is true, though it's not obvious from the
-;; source code! Be that as it may, I can't fix this until someone
-;; explains to me how to define `dictree--wrap-insfun' without using
-;; old-style backquotes, whilst still ensuring that the `setf' in
-;; the `dictree--wrap-insfun-2' macro is expanded at compile-time
-;; rather than run-time.
-;;   -- Toby Cubitt\n")
-;; 	  (setq buffer-read-only t)))))
-
 
 (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
   ;; return wrapped rankfun to deal with data wrapping
@@ -355,6 +317,8 @@ If START or END is negative, it counts from the end."
 		    (dictree--cell-plist cell2))))))
 
 
+;; ----------------------------------------------------------------
+;;                 The dictionary data structures
 
 (defstruct
   (dictree-
@@ -501,6 +465,10 @@ If START or END is negative, it counts from the end."
   dictlist meta-dict-list)
 
 
+
+;; ----------------------------------------------------------------
+;;           Miscelaneous internal functions and macros
+
 (defun dictree--trielist (dict)
   ;; Return a list of all the tries on which DICT is based. If DICT is a
   ;; meta-dict, this recursively descends the hierarchy, gathering all the
@@ -514,6 +482,35 @@ If START or END is negative, it counts from the end."
   (if (dictree-meta-dict-p dict)
       (mapc 'dictree--do-trielist (dictree--meta-dict-dictlist dict))
     (setq accumulate (cons (dictree--trie dict) accumulate))))
+
+
+(defmacro dictree--query-triefun (query-type)
+  ;; Return trie query function corresponding to QUERY-TYPE
+  `(intern (concat "trie-" (symbol-name ,query-type))))
+
+(defmacro dictree--query-stackfun (query-type)
+  ;; Return dictree stack creation function corresponding to QUERY-TYPE
+  `(intern (concat "dictree-" (symbol-name ,query-type) "-stack")))
+
+(defmacro dictree--query-cacheparam (query-type dict ranked)
+  ;; Return DICT's QUERY-TYPE cache threshold.
+  `(if ,ranked
+       (funcall (intern (concat "dictree-" (symbol-name ,query-type)
+				"-ranked-cache-threshold"))
+		,dict)
+     (funcall (intern (concat "dictree-" (symbol-name ,query-type)
+			      "-cache-threshold"))
+	      ,dict)))
+
+(defmacro dictree--query-cache (query-type dict ranked)
+  ;; Return DICT's QUERY-TYPE cache.
+  `(if ,ranked
+       (funcall
+	(intern (concat "dictree-" (symbol-name ,query-type) "-ranked-cache"))
+	,dict)
+     (funcall
+      (intern (concat "dictree-" (symbol-name ,query-type) "-cache"))
+      ,dict)))
 
 
 (defun dictree--merge (list1 list2 cmpfun &optional combfun maxnum)
@@ -576,7 +573,7 @@ If START or END is negative, it counts from the end."
 
 
 ;;; ================================================================
-;;;      The public functions which operate on dictionaries
+;;;    The (mostly) public functions which operate on dictionaries
 
 (defun dictree-create
   (&optional
@@ -826,6 +823,7 @@ The other arguments are as for `dictree-create'."
     dict))
 
 
+
 (defun dictree-p (obj)
   "Return t if OBJ is a dictionary tree, nil otherwise."
   (or (dictree--p obj) (dictree--meta-dict-p obj)))
@@ -987,37 +985,6 @@ The other arguments are as for `dictree-create'."
     (dictree--complete-ranked-cache dict)))
 
 
-(defmacro dictree--query-triefun (query-type)
-  ;; Return trie query function corresponding to QUERY-TYPE
-  `(intern (concat "trie-" (symbol-name ,query-type))))
-
-(defmacro dictree--query-stackfun (query-type)
-  ;; Return dictree stack creation function corresponding to QUERY-TYPE
-  `(intern (concat "dictree-" (symbol-name ,query-type) "-stack")))
-
-(defmacro dictree--query-cacheparam (query-type dict ranked)
-  ;; Return DICT's QUERY-TYPE cache threshold.
-  `(if ,ranked
-       (funcall (intern (concat "dictree-" (symbol-name ,query-type)
-				"-ranked-cache-threshold"))
-		,dict)
-     (funcall (intern (concat "dictree-" (symbol-name ,query-type)
-			      "-cache-threshold"))
-	      ,dict)))
-
-(defmacro dictree--query-cache (query-type dict ranked)
-  ;; Return DICT's QUERY-TYPE cache.
-  `(if ,ranked
-       (funcall
-	(intern (concat "dictree-" (symbol-name ,query-type) "-ranked-cache"))
-	,dict)
-     (funcall
-      (intern (concat "dictree-" (symbol-name ,query-type) "-cache"))
-      ,dict)))
-
-
-
-
 
 ;; ----------------------------------------------------------------
 ;;                  Inserting and deleting data
@@ -1161,11 +1128,11 @@ TEST returns non-nil."
 		 cache
 		 (dictree--merge
 		  (list (cons key newdata)) completions
-		  `(lambda (a b)
-		     (,(eval (macroexpand
-			      `(trie-construct-sortfun
-				,(dictree-comparison-function dict))))
-		      (car a) (car b)))
+		  (byte-compile
+		   `(lambda (a b)
+		      (,(trie-construct-sortfun
+			 (dictree-comparison-function dict))
+		       (car a) (car b))))
 		  (when (dictree--meta-dict-p dict)
 		    (dictree--meta-dict-combfun dict))
 		  maxnum)))
@@ -1444,29 +1411,33 @@ If TYPE is 'string, it must be possible to apply the function
 `string' to the elements of sequences stored in DICT.
 
 FUNCTION is applied in ascending order, or descending order if
-REVERSE is non-nil."
+REVERSE is non-nil.
 
-  ;; "rename" FUNCTION to something hopefully unique, to help avoid nasty
-  ;; dynamical scoping bugs
-  (let ((dictree-mapc--function function))
+Note: to avoid nasty dynamic scoping bugs, FUNCTION must *not*
+bind any variables with names commencing \"--\"."
+
+  ;; "rename" FUNCTION to something hopefully unique to lessen the likelihood
+  ;; of dynamic scoping bugs caused by a supplied function binding a variable
+  ;; with the same name as one of the arguments
+  (let ((--dictree-mapc--function function))
     (dictree--mapc
      (lambda (key data plist)
-       (funcall dictree-mapc--function key data))
+       (funcall --dictree-mapc--function key data))
      dict type reverse)))
+
 
 
 (defun dictree--mapc (function dict &optional type reverse)
   ;; Like `dictree-mapc', but FUNCTION is passed three arguments: the key, the
   ;; data, and the property list, instead of just key and data.
 
-  ;; "rename" FUNCTION to something hopefully unique, to help avoid nasty
-  ;; dynamical scoping bugs
-  (let ((dictree--mapc--function function))
+  ;; try to avoid dynamic binding bugs
+  (let ((--dictree--mapc--function function))
     ;; for a normal dictionary, map the function over its trie
     (if (not (dictree--meta-dict-p dict))
 	(trie-mapc
 	 (lambda (key cell)
-	   (funcall dictree--mapc--function
+	   (funcall --dictree--mapc--function
 		    key
 		    (dictree--cell-data cell)
 		    (dictree--cell-plist cell)))
@@ -1476,11 +1447,12 @@ REVERSE is non-nil."
       (let ((stack (dictree-stack dict))
 	    entry)
 	(while (setq entry (dictree--stack-pop stack))
-	  (funcall dictree--mapc--function
+	  (funcall --dictree--mapc--function
 		   (car entry)
 		   (dictree--cell-data (cdr entry))
 		   (dictree--cell-plist (cdr entry)))))
       )))
+
 
 
 (defun dictree-mapf (function combinator dict &optional type reverse)
@@ -1499,33 +1471,36 @@ stored in DICT.
 The FUNCTION will be applied and the results combined in
 asscending \"lexical\" order (i.e. the order defined by the
 dictionary's comparison function; cf. `dictree-create'), or
-descending order if REVERSE is non-nil."
+descending order if REVERSE is non-nil.
 
-  ;; "rename" functions to something hopefully unique, to help avoid nasty
-  ;; dynamical scoping bugs
-  (let ((dictree-mapf--function function)
-	(dictree-mapf--combinator combinator))
+Note: to avoid nasty dynamic scoping bugs, FUNCTION and
+COMBINATOR must *not* bind any variables with names
+commencing \"--\"."
+
+  ;; try to avoid dynamic scoping bugs
+  (let ((--dictree-mapf--function function)
+	(--dictree-mapf--combinator combinator))
 
     ;; for a normal dictionary, map the function over its trie
     (if (not (dictree--meta-dict-p dict))
 	(trie-mapf
 	 `(lambda (key data)
-	    (,dictree-mapf--function key (dictree--cell-data data)))
-	 dictree-mapf--combinator (dictree--trie dict) type reverse)
+	    (,--dictree-mapf--function key (dictree--cell-data data)))
+	 --dictree-mapf--combinator (dictree--trie dict) type reverse)
 
       ;; for a meta-dict, use a dictree-stack
-      (let ((dictree-mapf--stack (dictree-stack dict))
-	    dictree-mapf--entry
-	    dictree-mapf--accumulate)
-	(while (setq dictree-mapf--entry
-		     (dictree-stack-pop dictree-mapf--stack))
-	  (setq dictree-mapf--accumulate
-		(funcall dictree-mapf--combinator
-			 (funcall dictree-mapf--function
-				  (car dictree-mapf--entry)
-				  (cdr dictree-mapf--entry))
-			 dictree-mapf--accumulate)))
-	dictree-mapf--accumulate))))
+      (let ((--dictree-mapf--stack (dictree-stack dict))
+	    --dictree-mapf--entry
+	    --dictree-mapf--accumulate)
+	(while (setq --dictree-mapf--entry
+		     (dictree-stack-pop --dictree-mapf--stack))
+	  (setq --dictree-mapf--accumulate
+		(funcall --dictree-mapf--combinator
+			 (funcall --dictree-mapf--function
+				  (car --dictree-mapf--entry)
+				  (cdr --dictree-mapf--entry))
+			 --dictree-mapf--accumulate)))
+	--dictree-mapf--accumulate))))
 
 
 
@@ -1553,7 +1528,10 @@ then
 
   (trie-mapf function 'cons trie type (not reverse))
 
-is more efficient."
+is more efficient.
+
+Note: to avoid nasty dynamic scoping bugs, FUNCTION must *not*
+bind any variables with names commencing \"--\"."
   (nreverse (dictree-mapf function 'cons dict type)))
 
 
@@ -1577,6 +1555,7 @@ is more efficient."
 ;; ordinary version is just a single trie-stack). It consists of a heap of
 ;; trie-stacks for its constituent tries, where the heap order is the usual
 ;; lexical order over the keys at the top of the trie-stacks.
+
 (defstruct
   (dictree--meta-stack
    (:constructor nil)
@@ -1584,13 +1563,10 @@ is more efficient."
 		 (dict &optional (type 'vector) reverse
 		  &aux
 		  (combfun (dictree--meta-dict-combfun dict))
-		  (sortfun (eval (macroexpand
-				  `(trie-construct-sortfun
-				    ,(dictree-comparison-function dict)))))
+		  (sortfun (trie-construct-sortfun
+			    (dictree-comparison-function dict)))
 		  (heap (heap-create
-			 (eval (macroexpand
-				`(dictree--construct-meta-stack-heapfun
-				  ,sortfun)))
+			 (dictree--construct-meta-stack-heapfun sortfun)
 			 (length (dictree--trielist dict))))
 		  (dummy (mapc
 			  (lambda (dic)
@@ -1600,14 +1576,11 @@ is more efficient."
 		 (dict prefix &optional reverse
 		  &aux
 		  (combfun (dictree--meta-dict-combfun dict))
-		  (sortfun (eval (macroexpand
-				  `(trie-construct-sortfun
-				    ,(dictree-comparison-function dict)))))
+		  (sortfun (trie-construct-sortfun
+			    (dictree-comparison-function dict)))
 		  (heap (heap-create
-			 (eval (macroexpand
-				`(dictree--construct-meta-stack-heapfun
-				  ,sortfun
-				  ,reverse)))
+			 (dictree--construct-meta-stack-heapfun
+			  sortfun reverse)
 			 (length (dictree--trielist dict))))
 		  (dummy (mapc
 			  (lambda (trie)
@@ -1620,14 +1593,17 @@ is more efficient."
   combfun sortfun heap)
 
 
-(defmacro dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
+
+(defun dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
   ;; Wrap SORTFUN, which sorts keys, so it can act on dictree--meta-stack
   ;; elements.
   (if reverse
-      `(lambda (a b) (,sortfun (car (dictree-stack-first b))
-			       (car (dictree-stack-first a))))
-    `(lambda (a b) (,sortfun (car (dictree-stack-first a))
-			     (car (dictree-stack-first b))))))
+      (byte-compile
+       `(lambda (b a) (,sortfun (car (dictree-stack-first a))
+				(car (dictree-stack-first b)))))
+    (byte-compile
+     `(lambda (a b) (,sortfun (car (dictree-stack-first a))
+			      (car (dictree-stack-first b)))))))
 
 
 (defun dictree-stack (dict &optional type reverse)
@@ -1767,7 +1743,7 @@ Returns nil if the stack is empty."
 
 
 ;; ----------------------------------------------------------------
-;;                        Advanced queries
+;;             Functions for building advanced queries
 
 (defun dictree--query (query-type dict arg
 		       &optional
@@ -2602,7 +2578,7 @@ this can help produce an efficient data-structure."
 	     (midpt (+ (/ lines 2) (mod lines 2)))
 	     entry)
         ;; insert the median key and set the dictionary's modified flag
-	(dictree-goto-line midpt)
+	(dictree--goto-line midpt)
 	(when (setq entry
 		    (condition-case nil
 			(dictree--read-line dict)
@@ -2616,7 +2592,7 @@ this can help produce an efficient data-structure."
         ;; insert keys successively further away from the median in both
         ;; directions
 	(dotimes (i (1- midpt))
-	  (dictree-goto-line (+ midpt i 1))
+	  (dictree--goto-line (+ midpt i 1))
 	  (when (setq entry
 		      (condition-case nil
 			  (dictree--read-line dict)
@@ -2628,7 +2604,7 @@ this can help produce an efficient data-structure."
 	  (when (= 49 (mod i 50))
 	    (message "Inserting keys in %s...(%d of %d)"
 		     (dictree-name dict) (+ (* 2 i) 2) lines))
-	  (dictree-goto-line (- midpt i 1))
+	  (dictree--goto-line (- midpt i 1))
 	  (when (setq entry
 		      (condition-case nil
 			  (dictree--read-line dict)
@@ -2641,7 +2617,7 @@ this can help produce an efficient data-structure."
         ;; if file contains an even number of keys, we still have to add
         ;; the last one
 	(when (= 0 (mod lines 2))
-	  (dictree-goto-line lines)
+	  (dictree--goto-line lines)
 	  (when (setq entry
 		      (condition-case nil
 			  (dictree--read-line dict)
