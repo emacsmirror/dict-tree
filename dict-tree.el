@@ -1568,6 +1568,7 @@ bind any variables with names commencing \"--\"."
 		  (heap (heap-create
 			 (dictree--construct-meta-stack-heapfun sortfun)
 			 (length (dictree--trielist dict))))
+		  (pushed '())
 		  (dummy (mapc
 			  (lambda (dic)
 			    (heap-add heap (trie-stack dic type reverse)))
@@ -1582,6 +1583,7 @@ bind any variables with names commencing \"--\"."
 			 (dictree--construct-meta-stack-heapfun
 			  sortfun reverse)
 			 (length (dictree--trielist dict))))
+		  (pushed '())
 		  (dummy (mapc
 			  (lambda (trie)
 			    (let ((stack (trie-complete-stack
@@ -1590,7 +1592,7 @@ bind any variables with names commencing \"--\"."
 				(heap-add heap stack))))
 			  (dictree--trielist dict)))))
    (:copier nil))
-  combfun sortfun heap)
+  combfun sortfun heap pushed)
 
 
 
@@ -1668,22 +1670,46 @@ sufficient, it is better to use one of those instead."
 (defun dictree-stack-pop (dictree-stack)
   "Pop the first element from the DICTREE-STACK.
 Returns nil if the stack is empty."
-  (let ((popped (dictree--stack-pop dictree-stack)))
-    (when popped (cons (car popped) (dictree--cell-data (cdr popped))))))
+  (cond
+   ;; if elements have been pushed onto a dict stack, pop those first
+   ;; FIXME: shouldn't be using internal trie functions!
+   ((and (trie-stack-p dictree-stack) (trie--stack-pushed dictree-stack))
+    (trie-stack-pop dictree-stack))
+   ;; if elements have been pushed onto a meta-dict stack, pop those first
+   ((and (dictree--meta-stack-p dictree-stack)
+	 (dictree--meta-stack-pushed dictree-stack))
+    (pop (dictree--meta-stack-pushed dictree-stack)))
+   ;; otherwise, pop first element from dictree-stack
+   (t (let ((popped (dictree--stack-pop dictree-stack)))
+	(when popped (cons (car popped) (dictree--cell-data (cdr popped))))))
+   ))
+
+
+(defun dictree-stack-push (element dictree-stack)
+  "Push ELEMENT onto DICTREE-STACK."
+  (if (trie-stack-p dictree-stack)
+      (trie-stack-push element dictree-stack)  ; normal dict
+    (push element (dictree--meta-stack-pushed dictree-stack))))  ;  meta-dict
 
 
 (defun dictree-stack-first (dictree-stack)
   "Return the first element from DICTREE-STACK, without removing it.
 Returns nil if the stack is empty."
-  (let ((first (dictree--stack-first dictree-stack)))
-    (cons (car first) (dictree--cell-data (cdr first)))))
+  ;; if elements have been pushed onto the stack, return first of those
+  (if (and (dictree--meta-stack-p dictree-stack)
+	   (dictree--meta-stack-pushed dictree-stack))
+      (car (dictree--meta-stack-pushed dictree-stack))
+    ;; otherwise, return first element from dictree-stack
+    (let ((first (dictree--stack-first dictree-stack)))
+      (cons (car first) (dictree--cell-data (cdr first))))))
 
 
 (defun dictree-stack-empty-p (dictree-stack)
   "Return t if DICTREE-STACK is empty, nil otherwise."
   (if (trie-stack-p dictree-stack)
       (trie-stack-empty-p dictree-stack)  ; normal dict
-    (heap-empty (dictree--meta-stack-heap dictree-stack))))  ; meta--dict
+    (and (heap-empty (dictree--meta-stack-heap dictree-stack))  ; meta-dict
+	 (null (dictree--meta-stack-pushed dictree-stack)))))
 
 
 (defun dictree--stack-first (dictree-stack)
@@ -1693,8 +1719,10 @@ Returns nil if the stack is empty."
       ;; normal dict
       (trie-stack-first dictree-stack)
     ;; meta-dict
-    (dictree--stack-first
-     (heap-root (dictree--meta-stack-heap dictree-stack)))))
+    (if (dictree--meta-stack-pushed dictree-stack)
+	(car (dictree--meta-stack-pushed dictree-stack))  ; pushed element
+      (dictree--stack-first                        ; dictree-stack element
+       (heap-root (dictree--meta-stack-heap dictree-stack))))))
 
 
 (defun dictree--stack-pop (dictree-stack)
@@ -1716,7 +1744,7 @@ Returns nil if the stack is empty."
 	(setq stack (heap-delete-root heap))
 	(setq curr (dictree--stack-pop stack))
 	(unless (dictree-stack-empty-p stack) (heap-add heap stack))
-	;; peek at the first element of the new stack at the root of the heap
+	;; peek at the first element of the stack now at the root of the heap
 	(unless (heap-empty heap)
 	  (setq next (dictree--stack-first (heap-root heap)))
 	  ;; repeat this as long as we keep finding elements with the same key,
