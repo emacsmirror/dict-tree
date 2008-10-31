@@ -2130,9 +2130,12 @@ Returns t if successful, nil otherwise."
 
   ;; sort out dictionary name and file name
   (let (dictname dict)
-    (when (not (string= (substring file -4) ".elc"))
-      (setq file (concat file ".elc")))
-    (setq dictname (substring (file-name-nondirectory file) 0 -4))
+    (cond
+     ((string= (substring file -4) ".elc")
+      (setq dictname (file-name-nondirectory (substring file 0 -4))))
+     ((string= (substring file -3) ".el")
+      (setq dictname (file-name-nondirectory (substring file 0 -3))))
+     (t (setq dictname (file-name-nondirectory file))))
 
     ;; load the dictionary
     (load file t)
