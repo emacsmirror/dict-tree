@@ -290,31 +290,27 @@ If START or END is negative, it counts from the end."
 
 (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
   ;; return wrapped insfun to deal with data wrapping
-  (byte-compile
-   `(lambda (new old)
-      (dictree--cell-set-data old (,insfun (dictree--cell-data new)
-					   (dictree--cell-data old)))
-      old)))
+  `(lambda (new old)
+     (dictree--cell-set-data old (,insfun (dictree--cell-data new)
+					  (dictree--cell-data old)))
+     old))
 
 (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
   ;; return wrapped rankfun to deal with data wrapping
-  (byte-compile
-   `(lambda (a b)
-      (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
-		(cons (car b) (dictree--cell-data (cdr b)))))))
+  `(lambda (a b)
+     (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
+	       (cons (car b) (dictree--cell-data (cdr b))))))
 
 (defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
   ;; return wrapped filter function to deal with data wrapping
-  (byte-compile
-   `(lambda (key data) (,filter key (dictree--cell-data data)))))
+  `(lambda (key data) (,filter key (dictree--cell-data data))))
 
 (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
-  (byte-compile
-   `(lambda (cell1 cell2)
-      (cons (,combfun (dictree--cell-data cell1)
-		      (dictree--cell-data cell2))
-	    (append (dictree--cell-plist cell1)
-		    (dictree--cell-plist cell2))))))
+  `(lambda (cell1 cell2)
+     (cons (,combfun (dictree--cell-data cell1)
+		     (dictree--cell-data cell2))
+	   (append (dictree--cell-plist cell1)
+		   (dictree--cell-plist cell2)))))
 
 
 ;; ----------------------------------------------------------------
@@ -1128,11 +1124,10 @@ TEST returns non-nil."
 		 cache
 		 (dictree--merge
 		  (list (cons key newdata)) completions
-		  (byte-compile
-		   `(lambda (a b)
-		      (,(trie-construct-sortfun
-			 (dictree-comparison-function dict))
-		       (car a) (car b))))
+		  `(lambda (a b)
+		     (,(trie-construct-sortfun
+			(dictree-comparison-function dict))
+		      (car a) (car b)))
 		  (when (dictree--meta-dict-p dict)
 		    (dictree--meta-dict-combfun dict))
 		  maxnum)))
@@ -1600,12 +1595,10 @@ bind any variables with names commencing \"--\"."
   ;; Wrap SORTFUN, which sorts keys, so it can act on dictree--meta-stack
   ;; elements.
   (if reverse
-      (byte-compile
-       `(lambda (b a) (,sortfun (car (dictree-stack-first a))
-				(car (dictree-stack-first b)))))
-    (byte-compile
-     `(lambda (a b) (,sortfun (car (dictree-stack-first a))
-			      (car (dictree-stack-first b)))))))
+      `(lambda (b a) (,sortfun (car (dictree-stack-first a))
+			       (car (dictree-stack-first b))))
+    `(lambda (a b) (,sortfun (car (dictree-stack-first a))
+			     (car (dictree-stack-first b))))))
 
 
 (defun dictree-stack (dict &optional type reverse)
