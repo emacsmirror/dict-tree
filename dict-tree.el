@@ -510,10 +510,10 @@ If START or END is negative, it counts from the end."
 
 
 (defun dictree--merge (list1 list2 cmpfun &optional combfun maxnum)
-  ;; Destructively merge together sorted lists LIST1 and LIST2 of completions,
-  ;; sorting elements according to CMPFUN. For non-null MAXNUM, only the first
-  ;; MAXNUM are kept. For non-null COMBFUN, duplicate elements will be merged
-  ;; by passing the two elements as arguments to COMBFUN, and using the return
+  ;; Destructively merge together sorted lists LIST1 and LIST2, sorting
+  ;; elements according to CMPFUN. For non-null MAXNUM, only the first MAXNUM
+  ;; are kept. For non-null COMBFUN, duplicate elements will be merged by
+  ;; passing the two elements as arguments to COMBFUN, and using the return
   ;; value as the merged element.
   (or (listp list1) (setq list1 (append list1 nil)))
   (or (listp list2) (setq list2 (append list2 nil)))
@@ -1769,9 +1769,16 @@ Returns nil if the stack is empty."
 
 (defun dictree--query (query-type dict arg
 		       &optional
-		       rank-function maxnum reverse no-cache filter)
+		       rank-function maxnum reverse no-cache filter
+		       strip-data)
   ;; Return results of QUERY-TYPE (currently, only 'complete is implemented)
-  ;; on DICT. If RANK-FUNCTION is non-nil, return results ordered accordingly.
+  ;; with argument ARG on dictionary DICT. If RANK-FUNCTION is non-nil, return
+  ;; results ordered accordingly. If MAXNUM is an integer, only the first
+  ;; MAXNUM results will be returned. If REVERSE is non-nil, results are in
+  ;; reverse order. A non-nil NO-CACHE prevents caching of results,
+  ;; irrespective of DICT's cache settings. If supplied, only results that
+  ;; pass FILTER are included. A non-nil STRIP-DATA returns a list of
+  ;; keys. Otherwise, an alist of key-data associations is returned.
 
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
@@ -1851,8 +1858,13 @@ Returns nil if the stack is empty."
 		     (dictree-comparison-function (car dict)))
 		   (car a) (car b))))
 	     nil maxnum)))
-    completions))
 
+    ;; return completions list, stripping all data or just meta-data
+    (if strip-data
+	(mapcar 'car completions)
+      (mapcar (lambda (el) (cons (car el) (dictree--cell-data (cdr el))))
+	      completions))
+    ))
 
 
 (defun dictree--do-query (query-type dict arg
@@ -1955,17 +1967,13 @@ results, and doesn't count towards MAXNUM.
 If STRIP-DATA is non-nil, a list of completions is
 returned (rather than an alist), without the data."
   ;; run completion query
-  (let ((completions
-	 (dictree--query
-	  'complete dict prefix
-	  (when rank-function
-	    (if (functionp rank-function)
-		rank-function
-	      (dictree-rank-function (if (listp dict) (car dict) dict))))
-	  maxnum reverse no-cache filter)))
-    (if strip-data
-	(mapcar 'car completions)
-      completions)))
+  (dictree--query
+   'complete dict prefix
+   (when rank-function
+     (if (functionp rank-function)
+	 rank-function
+       (dictree-rank-function (if (listp dict) (car dict) dict))))
+   maxnum reverse no-cache filter strip-data))
 
 
 
@@ -1980,7 +1988,8 @@ following as the COLLECTION argument of any of those functions:
 Note that PREDICATE will be called with two arguments: the
 completion, and its associated data."
   (let ((completions
-	 (dictree-complete dict string nil nil nil nil predicate t)))
+	 (dictree-complete dict string nil nil nil nil
+			   predicate 'strip-data)))
     (if all
 	completions
       (try-completion "" completions))))
