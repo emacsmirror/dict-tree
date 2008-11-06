@@ -1532,7 +1532,8 @@ bind any variables with names commencing \"--\"."
 
 
 (defun dictree-size (dict)
-  "Return the number of entries in dictionary DICT."
+  "Return the number of entries in dictionary DICT.
+Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
   (let ((count 0))
     (dictree-mapc (lambda (&rest dummy) (incf count)) dict)
@@ -1997,7 +1998,10 @@ Use `dictree-write' to save to a different file.
 
 Optional argument COMPILATION determines whether to save the
 dictionary in compiled or uncompiled form. The default is to save
-both forms. See `dictree-write'."
+both forms. See `dictree-write'.
+
+Interactively, DICT is read from the mini-buffer."
+  (interactive (list (read-dict "Dictionary: ")))
 
   (let* ((filename (dictree--filename dict)))
 
@@ -2005,15 +2009,16 @@ both forms. See `dictree-write'."
     (unless (and filename (> (length filename) 0))
       (setq filename
 	    (read-file-name
-	     (format "Save %s to file (leave blank to NOT save): "
-		     (dictree--name dict))))
-      (setf (dictree-filename dict) filename))
+	     (format "Save dictionary %s to file (leave blank to NOT save): "
+		     (dictree--name dict))
+	     nil "")))
 
     ;; if filename is blank, don't save
     (if (string= filename "")
-	(message "No file supplied. Dictionary %s NOT saved" (dictree--name dict))
-      ;; otherwise write dictionary to file without requiring confirmation
-      (dictree-write dict filename t compilation))))
+	(message "Dictionary %s NOT saved" (dictree--name dict))
+      ;; otherwise write dictionary to file
+      (setf (dictree-filename dict) filename)
+      (dictree-write dict filename nil compilation))))
 
 
 
@@ -2033,104 +2038,119 @@ different Emacs versions.
 
 If optional argument COMPILATION is the symbol 'compiled, only
 the compiled version will be created, whereas if it is the symbol
-'uncompiled, only the uncompiled version will be created."
+'uncompiled, only the uncompiled version will be created.
 
-  (let (dictname buff tmpfile)
-    ;; add .el(c) extension to the filename if not already there
-    (cond
-     ;; remove .el(c) extension from filename
-     ((string= (substring filename -3) ".el")
-      (setq filename (substring filename 0 -3)))
-     ((string= (substring filename -4) ".elc")
-      (setq filename (substring filename 0 -4))))
-    ;; create saved dictionary name from filename
-    (setq dictname (file-name-nondirectory filename))
+Interactively, DICT and FILENAME are read from the mini-buffer,
+and OVERWRITE is the prefix argument."
+  (interactive (list (read-dict "Dictionary: ")
+		     (read-file-name "Write dictionary to file: " nil "")
+		     current-prefix-arg))
 
-    (save-excursion
-      ;; create a temporary file
-      (setq buff
-	    (find-file-noselect (setq tmpfile (make-temp-file dictname))))
-      (set-buffer buff)
-      ;; call the appropriate write function to write the dictionary code
-      (if (dictree--meta-dict-p dict)
-	  (dictree--write-meta-dict-code dict dictname filename)
-	(dictree--write-dict-code dict dictname filename))
-      (save-buffer)
-      (kill-buffer buff))
+  (if (and (interactive-p) (string= filename ""))
+      (progn
+	(message "Dictionary %s NOT written" (dictree--name dict))
+	nil)  ; indicate dictionary wasn't written
 
-    ;; prompt to overwrite if necessary
-    (when (or overwrite
-	      (and
-	       (or (eq compilation 'compiled)
-		   (not (file-exists-p (concat filename ".el"))))
-	       (or (eq compilation 'uncompiled)
-		   (not (file-exists-p (concat filename ".elc")))))
-	      (y-or-n-p
-	       (format "File %s already exists. Overwrite? "
-		       (concat filename ".el(c)"))))
-      (condition-case nil
-	  (progn
-	    ;; move the uncompiled version to its final destination
-	    (unless (eq compilation 'compiled)
-	      (copy-file tmpfile (concat filename ".el") t))
-	    ;; byte-compile and move the compiled version to its final
-	    ;; destination
-	    (unless (eq compilation 'uncompiled)
-	      (if (save-window-excursion
-		    (let ((restore byte-compile-disable-print-circle)
-			  err)
-		      (setq byte-compile-disable-print-circle t)
-		      (setq err (byte-compile-file tmpfile))
-		      (setq byte-compile-disable-print-circle restore)
-		      err))
-		  (rename-file (concat tmpfile ".elc")
-			       (concat filename ".elc") t)
-		(error))))
-	(error (error "Error saving. Dictionary %s NOT saved" dictname)))
+    (let (dictname buff tmpfile)
+      ;; add .el(c) extension to the filename if not already there
+      (cond
+       ;; remove .el(c) extension from filename
+       ((and (> (length filename) 3)
+	     (string= (substring filename -3) ".el"))
+	(setq filename (substring filename 0 -3)))
+       ((and (> (length filename) 4)
+	     (string= (substring filename -4) ".elc"))
+	(setq filename (substring filename 0 -4))))
+      ;; create saved dictionary name from filename
+      (setq dictname (file-name-nondirectory filename))
 
-      ;; if writing to a different name, unload dictionary under old name and
-      ;; reload it under new one
-      (setf (dictree-modified dict) nil)
-      (setf (dictree--filename dict) filename)
-      (unless (string= dictname (dictree-name dict))
-	(dictree-unload dict)
-	(dictree-load filename)))
+      (save-excursion
+	;; create a temporary file
+	(setq buff
+	      (find-file-noselect (setq tmpfile (make-temp-file dictname))))
+	(set-buffer buff)
+	;; call the appropriate write function to write the dictionary code
+	(if (dictree--meta-dict-p dict)
+	    (dictree--write-meta-dict-code dict dictname filename)
+	  (dictree--write-dict-code dict dictname filename))
+	(save-buffer)
+	(kill-buffer buff))
 
-    (delete-file tmpfile)
-    (message "Dictionary %s saved to %s" dictname filename)
-    t))  ; return t to indicate dictionary was successfully saved
+      ;; prompt to overwrite if necessary
+      (when (or overwrite
+		(and
+		 (or (eq compilation 'compiled)
+		     (not (file-exists-p (concat filename ".el"))))
+		 (or (eq compilation 'uncompiled)
+		     (not (file-exists-p (concat filename ".elc")))))
+		(y-or-n-p
+		 (format "File %s already exists. Overwrite? "
+			 (concat filename ".el(c)"))))
+	(condition-case nil
+	    (progn
+	      ;; move the uncompiled version to its final destination
+	      (unless (eq compilation 'compiled)
+		(copy-file tmpfile (concat filename ".el") t))
+	      ;; byte-compile and move the compiled version to its final
+	      ;; destination
+	      (unless (eq compilation 'uncompiled)
+		(if (save-window-excursion
+		      (let ((restore byte-compile-disable-print-circle)
+			    err)
+			(setq byte-compile-disable-print-circle t)
+			(setq err (byte-compile-file tmpfile))
+			(setq byte-compile-disable-print-circle restore)
+			err))
+		    (rename-file (concat tmpfile ".elc")
+				 (concat filename ".elc") t)
+		  (error))))
+	  (error (error "Error saving. Dictionary %s NOT saved" dictname)))
+
+	;; if writing to a different name, unload dictionary under old name and
+	;; reload it under new one
+	(setf (dictree-modified dict) nil)
+	(setf (dictree--filename dict) filename)
+	(unless (string= dictname (dictree-name dict))
+	  (dictree-unload dict)
+	  (dictree-load filename)))
+
+      (delete-file tmpfile)
+      (message "Dictionary %s saved to %s" dictname filename)
+      t)  ; return t to indicate dictionary was successfully saved
+    ))
 
 
 
-(defun dictree-save-modified (&optional dict ask compilation)
-  "Save all modified dictionaries that have a non-nil autosave flag.
+(defun dictree-save-modified (&optional dict ask compilation force)
+  "Save all modified dictionaries that have their autosave flag set.
 
 If optional argument DICT is a list of dictionaries or a single
-dictionary, only save those (even if their autosave flags are not
-set). If DICT is non-nil but not a list of dictionaries, save all
-dictionaries, irrespective of their autosave flag. Interactively,
-this can be set by supplying a prefix argument.
+dictionary, only save those.
 
 If optional argument ASK is non-nil, ask for confirmation before
 saving.
 
 Optional argument COMPILATION determines whether to save the
 dictionaries in compiled or uncompiled form. The default is to
-save both forms. See `dictree-write'."
+save both forms. See `dictree-write'.
 
-  ;; sort out DICT argument
-  (cond
-   ((dictree-p dict) (setq dict (list dict)))
-   ((and (listp dict) (dictree-p (car dict))))
-   (dict (setq dict 'all)))
+If optional argument FORCE is non-nil, save modified dictionaries
+irrespective of their autosave flag.
+
+Interactively, FORCE is the prefix argument."
+  (interactive "P")
+
+  ;; sort out arguments
+  (when (and (interactive-p) dict) (setq dict nil force t))
+  (when (dictree-p dict) (setq dict (list dict)))
 
   ;; For each dictionary in list / each loaded dictionary, check if dictionary
-  ;; has been modified. If so, save it if autosave is on or if saving all
-  (dolist (dic (if (or (null dict) (eq dict 'all))
-		    dictree-loaded-list
-		  dict))
+  ;; has been modified. If so, save it if autosave is set or FORCE is non-nil.
+  (dolist (dic (if (null dict)
+		   dictree-loaded-list
+		 dict))
     (when (and (dictree-modified dic)
-	       (or (eq dict 'all) (dictree-autosave dic))
+	       (or force (dictree-autosave dic))
 	       (or (not ask)
 		   (y-or-n-p (format "Save modified dictionary %s? "
 				     (dictree-filename dic)))))
@@ -2146,24 +2166,32 @@ save both forms. See `dictree-write'."
 
 (defun dictree-load (file)
   "Load a dictionary object from file FILE.
-Returns t if successful, nil otherwise."
-  (interactive "fDictionary file to load: ")
+Returns t if successful, nil otherwise.
+
+Interactively, FILE is read from the mini-buffer."
+  (interactive (list (completing-read
+		      "Load dictionary: "
+		      (apply-partially 'locate-file-completion-table
+				       load-path
+				       (get-load-suffixes)))))
 
   ;; sort out dictionary name and file name
   (let (dictname dict)
     (cond
-     ((string= (substring file -4) ".elc")
+     ((and (> (length file) 4)
+	   (string= (substring file -4) ".elc"))
       (setq dictname (file-name-nondirectory (substring file 0 -4))))
-     ((string= (substring file -3) ".el")
+     ((and (> (length file) 3)
+	   (string= (substring file -3) ".el"))
       (setq dictname (file-name-nondirectory (substring file 0 -3))))
      (t (setq dictname (file-name-nondirectory file))))
 
     ;; load the dictionary
-    (load file t)
+    (unless (load file t)
+      (error "Cannot open dictionary file: %s" file))
     (setq dict (eval (intern-soft dictname)))
     (when (not (dictree-p dict))
-      (beep)
-      (error "Error loading dictionary from %s" file))
+      (error "Error loading dictionary file: %s" file))
 
     ;; ensure the dictionary name and file name associated with the
     ;; dictionary match the file it was loaded from
@@ -2181,8 +2209,11 @@ Returns t if successful, nil otherwise."
 (defun dictree-unload (dict &optional dont-save)
   "Unload dictionary DICT.
 If optional argument DONT-SAVE is non-nil, the dictionary will
-NOT be saved even if its autosave flag is set."
-  (interactive (list (read-dict "Dictionary to unload: ")
+NOT be saved even if its autosave flag is set.
+
+Interactively, DICT is read from the mini-buffer, and DONT-SAVE
+is the prefix argument."
+  (interactive (list (read-dict "Dictionary: ")
 		     current-prefix-arg))
 
   ;; if dictionary has been modified, autosave is set and not overidden,
@@ -2589,7 +2620,7 @@ NOT be saved even if its autosave flag is set."
 (defun dictree-populate-from-file (dict file)
   "Populate dictionary DICT from the key list in file FILE.
 
-Each line of the file should contain a key, either a string
+Each line of FILE should contain a key, either a string
 \(delimeted by \"\), a vector or a list. (Use the escape sequence
 \\\" to include a \" in a string.) If a line does not contain a
 key, it is silently ignored. The keys should ideally be sorted
@@ -2600,80 +2631,83 @@ Each line can optionally include data and meta-data to be
 associated with the key, in that order, and separated from each
 other and the key by whitespace.
 
+Interactively, DICT and FILE are read from the mini-buffer.
+
 
 Technicalities:
 
 The key, data and property list are read as lisp expressions
-using `read', and are read from the middle outwards, i.e. first
-the middle key is read, then the key directly after it, then the
-key directly before it, then the one two lines after the middle,
-then the one two lines before, and so on. Assuming the keys in
-the file are sorted \"lexically\", for some types of dictionary
-this can help produce an efficient data-structure."
+using `read'. There is no guarantee that the keys will be read
+from FILE in order."
+  (interactive (list (read-dict "Dictionary: ")
+		     (read-file-name "File to populate from: " nil "" t)))
 
-  (save-excursion
-    (let ((buff (generate-new-buffer " *dictree-populate*")))
-      ;; insert the key list into a temporary buffer
-      (set-buffer buff)
-      (insert-file-contents file)
+  (if (and (interactive-p) (string= file ""))
+      (message "Dictionary %s NOT populated" (dictree-name dict))
 
-      ;; insert the keys starting from the median to ensure a reasonably
-      ;; well-balanced tree
-      (let* ((lines (count-lines (point-min) (point-max)))
-	     (midpt (+ (/ lines 2) (mod lines 2)))
-	     entry)
-        ;; insert the median key and set the dictionary's modified flag
-	(dictree--goto-line midpt)
-	(when (setq entry
-		    (condition-case nil
-			(dictree--read-line dict)
-		      (error (error "Error reading line %d of %s"
-				    midpt file))))
-	  (dictree-insert dict (car entry) (nth 1 entry))
-	  (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
-		(nth 2 entry)))
-	(message "Inserting keys in %s...(1 of %d)"
-		 (dictree-name dict) lines)
-        ;; insert keys successively further away from the median in both
-        ;; directions
-	(dotimes (i (1- midpt))
-	  (dictree--goto-line (+ midpt i 1))
+    (save-excursion
+      (let ((buff (generate-new-buffer " *dictree-populate*")))
+	;; insert the key list into a temporary buffer
+	(set-buffer buff)
+	(insert-file-contents file)
+
+	;; insert the keys starting from the median to ensure a reasonably
+	;; well-balanced tree
+	(let* ((lines (count-lines (point-min) (point-max)))
+	       (midpt (+ (/ lines 2) (mod lines 2)))
+	       entry)
+	  ;; insert the median key and set the dictionary's modified flag
+	  (dictree--goto-line midpt)
 	  (when (setq entry
 		      (condition-case nil
 			  (dictree--read-line dict)
 			(error (error "Error reading line %d of %s"
-				      (+ midpt i 1) file))))
+				      midpt file))))
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
 		  (nth 2 entry)))
-	  (when (= 49 (mod i 50))
-	    (message "Inserting keys in %s...(%d of %d)"
-		     (dictree-name dict) (+ (* 2 i) 2) lines))
-	  (dictree--goto-line (- midpt i 1))
-	  (when (setq entry
-		      (condition-case nil
-			  (dictree--read-line dict)
-			(error (error "Error reading line %d of %s"
-				      (- midpt i 1) file))))
-	    (dictree-insert dict (car entry) (nth 1 entry))
-	    (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
-		  (nth 2 entry))))
+	  (message "Inserting keys in %s...(1 of %d)"
+		   (dictree-name dict) lines)
+	  ;; insert keys successively further away from the median in both
+	  ;; directions
+	  (dotimes (i (1- midpt))
+	    (dictree--goto-line (+ midpt i 1))
+	    (when (setq entry
+			(condition-case nil
+			    (dictree--read-line dict)
+			  (error (error "Error reading line %d of %s"
+					(+ midpt i 1) file))))
+	      (dictree-insert dict (car entry) (nth 1 entry))
+	      (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
+		    (nth 2 entry)))
+	    (when (= 49 (mod i 50))
+	      (message "Inserting keys in %s...(%d of %d)"
+		       (dictree-name dict) (+ (* 2 i) 2) lines))
+	    (dictree--goto-line (- midpt i 1))
+	    (when (setq entry
+			(condition-case nil
+			    (dictree--read-line dict)
+			  (error (error "Error reading line %d of %s"
+					(- midpt i 1) file))))
+	      (dictree-insert dict (car entry) (nth 1 entry))
+	      (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
+		    (nth 2 entry))))
 
-        ;; if file contains an even number of keys, we still have to add
-        ;; the last one
-	(when (= 0 (mod lines 2))
-	  (dictree--goto-line lines)
-	  (when (setq entry
-		      (condition-case nil
-			  (dictree--read-line dict)
-			(error (error "Error reading line %d of %s"
-				      lines file))))
-	    (dictree-insert dict (car entry) (nth 1 entry))
-	    (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
-		  (nth 2 entry))))
-	(message "Inserting keys in %s...done" (dictree-name dict)))
+	  ;; if file contains an even number of keys, we still have to add
+	  ;; the last one
+	  (when (= 0 (mod lines 2))
+	    (dictree--goto-line lines)
+	    (when (setq entry
+			(condition-case nil
+			    (dictree--read-line dict)
+			  (error (error "Error reading line %d of %s"
+					lines file))))
+	      (dictree-insert dict (car entry) (nth 1 entry))
+	      (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
+		    (nth 2 entry))))
+	  (message "Inserting keys in %s...done" (dictree-name dict)))
 
-      (kill-buffer buff))))
+	(kill-buffer buff)))))
 
 
 
@@ -2718,7 +2752,14 @@ is 'vector.
 
 Note that if the data does not have a read syntax, the dumped
 data can not be used to recreate the dictionary using
-`dictree-populate-from-file'."
+`dictree-populate-from-file'.
+
+Interactively, DICT and BUFFER are read from the mini-buffer,
+TYPE is always 'string."
+  (interactive (list (read-dict "Dictionary: ")
+		     (read-buffer "Buffer to dump to (defaults to current): "
+				  (buffer-name (current-buffer)))
+		     'string))
 
   ;; select the buffer, creating it if necessary
   (if buffer
@@ -2774,25 +2815,33 @@ TYPE determines the type of sequence to use to represent the
 keys, and should be one of 'string, 'vector or 'list. The default
 is 'vector.
 
-Note that if the data does not have a read syntax, the dumped
+Note that if the data does not have a read syntax and no , the dumped
 data can not be used to recreate the dictionary using
-`dictree-populate-from-file'."
+`dictree-populate-from-file'.
 
-  ;; check if file exists, and prompt to overwrite it if necessary
-  (if (and (file-exists-p filename)
-	   (not overwrite)
-	   (not (y-or-n-p
-		 (format "File %s already exists. Overwrite? "
-			 filename))))
-      (message "Key dump cancelled")
+Interactively, DICT and FILE are read from the mini-buffer,
+OVERWRITE is the prefix argument, and TYPE is always 'string."
+  (interactive (list (read-dict "Dictionary: ")
+		     (read-file-name "File to dump to: " nil "")))
 
-    (let (buff)
-      ;; create temporary buffer, dump keys to it, and save to FILENAME
-      (setq buff (generate-new-buffer filename))
-      (save-window-excursion
-	(dictree-dump-to-buffer dict buff type)
-	(write-file filename))
-      (kill-buffer buff))))
+  (if (and (interactive-p) (string= filename ""))
+      (message "Dictionary %s NOT dumped" (dictree-name dict))
+
+    ;; check if file exists, and prompt to overwrite it if necessary
+    (if (and (file-exists-p filename)
+	     (not overwrite)
+	     (not (y-or-n-p
+		   (format "File %s already exists. Overwrite? "
+			   filename))))
+	(message "Key dump cancelled")
+
+      (let (buff)
+	;; create temporary buffer, dump keys to it, and save to FILENAME
+	(setq buff (generate-new-buffer filename))
+	(save-window-excursion
+	  (dictree-dump-to-buffer dict buff type)
+	  (write-file filename))
+	(kill-buffer buff)))))
 
 
 
