@@ -381,18 +381,22 @@ If START or END is negative, it counts from the end."
 		  &key
 		  createfun insertfun deletefun lookupfun mapfun emptyfun
 		  stack-createfun stack-popfun stack-emptyfun
+		  transform-for-print transform-from-read
 		  &aux
 		  (modified nil)
-		  (trie (trie-create-custom comparison-function
-				     :createfun createfun
-				     :insertfun insertfun
-				     :deletefun deletefun
-				     :lookupfun lookupfun
-				     :mapfun mapfun
-				     :emptyfun emptyfun
-				     :stack-createfun stack-createfun
-				     :stack-popfun stack-popfun
-				     :stack-emptyfun stack-emptyfun))
+		  (trie (trie-create-custom
+			 comparison-function
+			 :createfun createfun
+			 :insertfun insertfun
+			 :deletefun deletefun
+			 :lookupfun lookupfun
+			 :mapfun mapfun
+			 :emptyfun emptyfun
+			 :stack-createfun stack-createfun
+			 :stack-popfun stack-popfun
+			 :stack-emptyfun stack-emptyfun
+			 :transform-for-print transform-for-print
+			 :transform-from-read transform-from-read))
 		  (insfun (dictree--wrap-insfun insert-function))
 		  (rankfun (dictree--wrap-rankfun rank-function))
 		  (lookup-cache
@@ -707,19 +711,21 @@ structure. See `trie-create' for details."
 
 
 
-(defun dictree-create-custom
-  (&optional
-   name filename autosave unlisted
-   comparison-function insert-function rank-function
-   cache-policy cache-update-policy
-   lookup-cache-threshold
-   complete-cache-threshold
-   complete-ranked-cache-threshold
-   key-savefun key-loadfun
-   data-savefun data-loadfun
-   plist-savefun plist-loadfun
-   createfun insertfun deletefun lookupfun mapfun emptyfun
-   stack-createfun stack-popfun stack-emptyfun)
+(defun* dictree-create-custom
+    (&optional
+     name filename autosave unlisted
+     &key
+     comparison-function insert-function rank-function
+     cache-policy cache-update-policy
+     lookup-cache-threshold
+     complete-cache-threshold
+     complete-ranked-cache-threshold
+     key-savefun key-loadfun
+     data-savefun data-loadfun
+     plist-savefun plist-loadfun
+     createfun insertfun deletefun lookupfun mapfun emptyfun
+     stack-createfun stack-popfun stack-emptyfun
+     transform-for-print transform-from-read)
   "Create an empty dictionary and return it.
 
 The NAME through PLIST-LOADFUN arguments are as for
@@ -757,7 +763,9 @@ underlying data structure. See `trie-create' for details."
 	  :emptyfun emptyfun
 	  :stack-createfun stack-createfun
 	  :stack-popfun stack-popfun
-	  :stack-emptyfun stack-emptyfun)))
+	  :stack-emptyfun stack-emptyfun
+	  :transform-for-print transform-for-print
+	  :transform-from-read transform-from-read)))
     ;; store dictionary in variable NAME
     (when name (set name dict))
     ;; add it to loaded dictionary list, unless it's unlisted
