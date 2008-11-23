@@ -2505,8 +2505,8 @@ is the prefix argument."
 	    (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n"))
 	;; if dictionary doesn't use any custom save functions, tmpdict's trie
 	;; is identical to original dict, so transform it back to usable form
-	(when (or (dictree--data-savefun dict)
-		  (dictree--plist-savefun dict))
+	(unless (or (dictree--data-savefun dict)
+		    (dictree--plist-savefun dict))
 	  (trie-transform-from-read (dictree--trie tmpdict))))
       (insert "(trie-transform-from-read (dictree--trie " dictname "))\n")
       (when hashcode (insert hashcode))
