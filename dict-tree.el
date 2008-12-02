@@ -2636,7 +2636,7 @@ is the prefix argument."
 ;; ----------------------------------------------------------------
 ;;                Dumping and restoring contents
 
-(defun dictree-populate-from-file (dict file)
+(defun dictree-populate-from-file (dict file &optional balance)
   "Populate dictionary DICT from the key list in file FILE.
 
 Each line of FILE should contain a key, either a string
@@ -2656,8 +2656,11 @@ Interactively, DICT and FILE are read from the mini-buffer.
 Technicalities:
 
 The key, data and property list are read as lisp expressions
-using `read'. There is no guarantee that the keys will be read
-from FILE in order."
+using `read'. The keys will be read from FILE in order, unless
+BALANCE is non-nil, in which case they are read from the median
+element outwards (which can help ensure efficient data structures
+are created when using a trie that is not self-balancing, see
+`dictree-create')."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to populate from: " nil "" t)))
 
@@ -2665,18 +2668,20 @@ from FILE in order."
       (message "Dictionary %s NOT populated" (dictree-name dict))
 
     (save-excursion
-      (let ((buff (generate-new-buffer " *dictree-populate*")))
-	;; insert the key list into a temporary buffer
+      (let ((buff (find-file-noselect file)))
 	(set-buffer buff)
-	(insert-file-contents file)
 
 	;; insert the keys starting from the median to ensure a reasonably
 	;; well-balanced tree
 	(let* ((lines (count-lines (point-min) (point-max)))
 	       (midpt (+ (/ lines 2) (mod lines 2)))
 	       entry)
+	  (message "Inserting keys in %s...(1 of %d)"
+		   (dictree-name dict) lines)
 	  ;; insert the median key and set the dictionary's modified flag
-	  (dictree--goto-line midpt)
+	  (if balance
+	      (dictree--goto-line midpt)
+	    (goto-char (point-min)))
 	  (when (setq entry
 		      (condition-case nil
 			  (dictree--read-line dict)
@@ -2685,12 +2690,12 @@ from FILE in order."
 	    (dictree-insert dict (car entry) (nth 1 entry))
 	    (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
 		  (nth 2 entry)))
-	  (message "Inserting keys in %s...(1 of %d)"
-		   (dictree-name dict) lines)
 	  ;; insert keys successively further away from the median in both
 	  ;; directions
-	  (dotimes (i (1- midpt))
-	    (dictree--goto-line (+ midpt i 1))
+	  (dotimes (i (1- (if balance midpt lines)))
+	    (if balance
+		(dictree--goto-line (+ midpt i 1))
+	      (forward-line 1))
 	    (when (setq entry
 			(condition-case nil
 			    (dictree--read-line dict)
@@ -2702,19 +2707,21 @@ from FILE in order."
 	    (when (= 49 (mod i 50))
 	      (message "Inserting keys in %s...(%d of %d)"
 		       (dictree-name dict) (+ (* 2 i) 2) lines))
-	    (dictree--goto-line (- midpt i 1))
-	    (when (setq entry
-			(condition-case nil
-			    (dictree--read-line dict)
-			  (error (error "Error reading line %d of %s"
-					(- midpt i 1) file))))
-	      (dictree-insert dict (car entry) (nth 1 entry))
-	      (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
-		    (nth 2 entry))))
+	    (when balance
+	      (dictree--goto-line (- midpt i 1))
+	      (when (setq entry
+			  (condition-case nil
+			      (dictree--read-line dict)
+			    (error (error "Error reading line %d of %s"
+					  (- midpt i 1) file))))
+		(dictree-insert dict (car entry) (nth 1 entry))
+		(setf
+		 (dictree--cell-plist (dictree--lookup dict (car entry) nil))
+		 (nth 2 entry)))))
 
-	  ;; if file contains an even number of keys, we still have to add
-	  ;; the last one
-	  (when (= 0 (mod lines 2))
+	  ;; if inserting from mid-point out, and file contains an even number
+	  ;; of keys, we still have to add the last one
+	  (when (and balance (= 0 (mod lines 2)))
 	    (dictree--goto-line lines)
 	    (when (setq entry
 			(condition-case nil
@@ -2724,8 +2731,8 @@ from FILE in order."
 	      (dictree-insert dict (car entry) (nth 1 entry))
 	      (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
 		    (nth 2 entry))))
-	  (message "Inserting keys in %s...done" (dictree-name dict)))
 
+	  (message "Inserting keys in %s...done" (dictree-name dict)))
 	(kill-buffer buff)))))
 
 
