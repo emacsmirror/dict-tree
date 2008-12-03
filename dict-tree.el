@@ -2636,19 +2636,27 @@ is the prefix argument."
 ;; ----------------------------------------------------------------
 ;;                Dumping and restoring contents
 
-(defun dictree-populate-from-file (dict file &optional balance)
+(defun dictree-populate-from-file (dict file
+				   &optional
+				   insert-function
+				   key-loadfun
+				   data-loadfun
+				   plist-loadfun
+				   balance)
   "Populate dictionary DICT from the key list in file FILE.
 
 Each line of FILE should contain a key, either a string
-\(delimeted by \"\), a vector or a list. (Use the escape sequence
-\\\" to include a \" in a string.) If a line does not contain a
-key, it is silently ignored. The keys should ideally be sorted
-\"lexically\", as defined by the dictionary's comparison-function
-\(see `dictree-create'\).
+\(delimeted by \"\), a vector, or a list. (Use the escape
+sequence \\\" to include a \" in a string.) If a line does not
+contain a key, it is silently ignored.
 
-Each line can optionally include data and meta-data to be
-associated with the key, in that order, and separated from each
-other and the key by whitespace.
+Each line can optionally include data and a property list (in
+that order) to be associated with the key. If present, these
+should separated from each other and the key by whitespace.
+
+INSERT-FUNCTION, KEY-LOAD-FUNCTION, DATA-LOAD-FUNCTION and
+PLIST-LOAD-FUNCTION override the corresponding default functions
+for DICT (see `dictree-create').
 
 Interactively, DICT and FILE are read from the mini-buffer.
 
@@ -2665,7 +2673,12 @@ are created when using a trie that is not self-balancing, see
 		     (read-file-name "File to populate from: " nil "" t)))
 
   (if (and (interactive-p) (string= file ""))
-      (message "Dictionary %s NOT populated" (dictree-name dict))
+      (message "No file specified; dictionary %s NOT populated"
+	       (dictree-name dict))
+
+    (unless key-loadfun (setq key-loadfun (dictree--key-loadfun dict)))
+    (unless data-loadfun (setq data-loadfun (dictree--data-loadfun dict)))
+    (unless plist-loadfun (setq plist-loadfun (dictree--plist-loadfun dict)))
 
     (save-excursion
       (let ((buff (find-file-noselect file)))
@@ -2684,10 +2697,11 @@ are created when using a trie that is not self-balancing, see
 	    (goto-char (point-min)))
 	  (when (setq entry
 		      (condition-case nil
-			  (dictree--read-line dict)
+			  (dictree--read-line dict key-loadfun data-loadfun
+					      plist-loadfun)
 			(error (error "Error reading line %d of %s"
 				      midpt file))))
-	    (dictree-insert dict (car entry) (nth 1 entry))
+	    (dictree-insert dict (car entry) (nth 1 entry) insert-function)
 	    (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
 		  (nth 2 entry)))
 	  ;; insert keys successively further away from the median in both
@@ -2698,12 +2712,14 @@ are created when using a trie that is not self-balancing, see
 	      (forward-line 1))
 	    (when (setq entry
 			(condition-case nil
-			    (dictree--read-line dict)
+			    (dictree--read-line dict key-loadfun data-loadfun
+						plist-loadfun)
 			  (error (error "Error reading line %d of %s"
 					(+ midpt i 1) file))))
-	      (dictree-insert dict (car entry) (nth 1 entry))
-	      (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
-		    (nth 2 entry)))
+	      (dictree-insert dict (car entry) (nth 1 entry) insert-function)
+	      (setf
+	       (dictree--cell-plist (dictree--lookup dict (car entry) nil))
+	       (nth 2 entry)))
 	    (when (= 49 (mod i 50))
 	      (message "Inserting keys in %s...(%d of %d)"
 		       (dictree-name dict) (+ (* 2 i) 2) lines))
@@ -2711,10 +2727,12 @@ are created when using a trie that is not self-balancing, see
 	      (dictree--goto-line (- midpt i 1))
 	      (when (setq entry
 			  (condition-case nil
-			      (dictree--read-line dict)
+			      (dictree--read-line dict key-loadfun
+						  data-loadfun plist-loadfun)
 			    (error (error "Error reading line %d of %s"
 					  (- midpt i 1) file))))
-		(dictree-insert dict (car entry) (nth 1 entry))
+		(dictree-insert dict (car entry)
+				(nth 1 entry) insert-function)
 		(setf
 		 (dictree--cell-plist (dictree--lookup dict (car entry) nil))
 		 (nth 2 entry)))))
@@ -2725,19 +2743,22 @@ are created when using a trie that is not self-balancing, see
 	    (dictree--goto-line lines)
 	    (when (setq entry
 			(condition-case nil
-			    (dictree--read-line dict)
+			    (dictree--read-line dict key-loadfun data-loadfun
+						plist-loadfun)
 			  (error (error "Error reading line %d of %s"
 					lines file))))
-	      (dictree-insert dict (car entry) (nth 1 entry))
-	      (setf (dictree--cell-plist (dictree--lookup dict (car entry) nil))
-		    (nth 2 entry))))
+	      (dictree-insert dict (car entry) (nth 1 entry) insert-function)
+	      (setf
+	       (dictree--cell-plist (dictree--lookup dict (car entry) nil))
+	       (nth 2 entry))))
 
 	  (message "Inserting keys in %s...done" (dictree-name dict)))
 	(kill-buffer buff)))))
 
 
 
-(defun dictree--read-line (dict)
+(defun dictree--read-line (dict &optional
+				key-loadfun data-loadfun plist-loadfun)
   ;; Return a list containing the key, data (if any, otherwise nil) and
   ;; property list (ditto) at the current line of the current buffer, for
   ;; dictionary DICT.
@@ -2745,21 +2766,18 @@ are created when using a trie that is not self-balancing, see
     (let (key data plist)
       ;; read key
       (beginning-of-line)
-      (setq key (read (current-buffer)))
-      (when (dictree--key-loadfun dict)
-	(setq key (funcall (dictree--key-loadfun dict) key)))
-      ;; if there's anything after the key, use it as data
-      (unless (eq (line-end-position) (point))
-	(setq data (read (current-buffer))))
-      (when (dictree--data-loadfun dict)
-	(setq data (funcall (dictree--data-loadfun dict) data)))
-      ;; if there's anything after the data, use is as the property list
-      (unless (eq (line-end-position) (point))
-	(setq plist (read (current-buffer))))
-      (when (dictree--plist-loadfun dict)
-	(funcall (dictree--plist-loadfun dict) plist))
-      ;; return the key and data
-      (list key data plist))))
+      (when (setq key (read (current-buffer)))
+	(when key-loadfun (setq key (funcall key-loadfun key)))
+	;; if there's anything after the key, use it as data
+	(unless (eq (line-end-position) (point))
+	  (setq data (read (current-buffer))))
+	(when data-loadfun (setq data (funcall data-loadfun data)))
+	;; if there's anything after the data, use is as the property list
+	(unless (eq (line-end-position) (point))
+	  (setq plist (read (current-buffer))))
+	(when plist-loadfun (funcall plist-loadfun plist))
+	;; return the key and data
+	(list key data plist)))))
 
 
 
