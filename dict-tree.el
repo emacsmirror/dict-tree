@@ -2749,19 +2749,17 @@ are created when using a trie that is not self-balancing, see
       (when (dictree--key-loadfun dict)
 	(setq key (funcall (dictree--key-loadfun dict) key)))
       ;; if there's anything after the key, use it as data
-      (if (eq (line-end-position) (point))
-	  (list key)
-	(setq data (read (current-buffer)))
-	(when (dictree--data-loadfun dict)
-	  (setq data (funcall (dictree--data-loadfun dict) data)))
-	(if (eq (line-end-position) (point))
-	    (list key data)
-	  ;; if there's anything after the data, use is as the property list
-	  (setq plist (read (current-buffer)))
-	  (when (dictree--plist-loadfun dict)
-	    (funcall (dictree--plist-loadfun dict) plist))
-	  ;; return the key and data
-	  (list key data plist))))))
+      (unless (eq (line-end-position) (point))
+	(setq data (read (current-buffer))))
+      (when (dictree--data-loadfun dict)
+	(setq data (funcall (dictree--data-loadfun dict) data)))
+      ;; if there's anything after the data, use is as the property list
+      (unless (eq (line-end-position) (point))
+	(setq plist (read (current-buffer))))
+      (when (dictree--plist-loadfun dict)
+	(funcall (dictree--plist-loadfun dict) plist))
+      ;; return the key and data
+      (list key data plist))))
 
 
 
