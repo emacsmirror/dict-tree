@@ -2722,7 +2722,9 @@ are created when using a trie that is not self-balancing, see
 	       (nth 2 entry)))
 	    (when (= 49 (mod i 50))
 	      (message "Inserting keys in %s...(%d of %d)"
-		       (dictree-name dict) (+ (* 2 i) 2) lines))
+		       (dictree-name dict)
+		       (if balance (+ (* 2 i) 2) i)
+		       lines))
 	    (when balance
 	      (dictree--goto-line (- midpt i 1))
 	      (when (setq entry
