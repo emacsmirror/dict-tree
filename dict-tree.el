@@ -1764,7 +1764,7 @@ Returns nil if the stack is empty."
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
 
-  (let (cache cacheparam completions cmpl)
+  (let (cache cacheparam completions cmpl cache-entry)
     ;; map over all dictionaries in list
     (dolist (dic dict)
       (setq cache (funcall cachefun dic)
@@ -1784,17 +1784,18 @@ Returns nil if the stack is empty."
 
 
        ;; if there's a cached result with enough completions, use it
-       ((and (setq cache
+       ((and (setq cache-entry
 		   (if cacheparam
 		       (gethash (cons arg reverse) cache)
 		     nil))
-	     (or (null (dictree--cache-maxnum cache))
-		 (and maxnum (<= maxnum (dictree--cache-maxnum cache)))))
-	(setq cmpl (dictree--cache-completions cache))
+	     (or (null (dictree--cache-maxnum cache-entry))
+		 (and maxnum
+		      (<= maxnum (dictree--cache-maxnum cache-entry)))))
+	(setq cmpl (dictree--cache-completions cache-entry))
 	;; drop any excess completions
 	(when (and maxnum
-		   (or (null (dictree--cache-maxnum cache))
-		       (> (dictree--cache-maxnum cache) maxnum)))
+		   (or (null (dictree--cache-maxnum cache-entry))
+		       (> (dictree--cache-maxnum cache-entry) maxnum)))
 	  (setcdr (nthcdr (1- maxnum) completions) nil)))
 
 
