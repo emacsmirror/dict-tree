@@ -484,35 +484,6 @@ If START or END is negative, it counts from the end."
     (setq accumulate (cons (dictree--trie dict) accumulate))))
 
 
-(defmacro dictree--query-triefun (query-type)
-  ;; Return trie query function corresponding to QUERY-TYPE
-  `(intern (concat "trie-" (symbol-name ,query-type))))
-
-(defmacro dictree--query-stackfun (query-type)
-  ;; Return dictree stack creation function corresponding to QUERY-TYPE
-  `(intern (concat "dictree-" (symbol-name ,query-type) "-stack")))
-
-(defmacro dictree--query-cacheparam (query-type dict ranked)
-  ;; Return DICT's QUERY-TYPE cache threshold.
-  `(if ,ranked
-       (funcall (intern (concat "dictree-" (symbol-name ,query-type)
-				"-ranked-cache-threshold"))
-		,dict)
-     (funcall (intern (concat "dictree-" (symbol-name ,query-type)
-			      "-cache-threshold"))
-	      ,dict)))
-
-(defmacro dictree--query-cache (query-type dict ranked)
-  ;; Return DICT's QUERY-TYPE cache.
-  `(if ,ranked
-       (funcall
-	(intern (concat "dictree-" (symbol-name ,query-type) "-ranked-cache"))
-	,dict)
-     (funcall
-      (intern (concat "dictree-" (symbol-name ,query-type) "-cache"))
-      ,dict)))
-
-
 (defun dictree--merge (list1 list2 cmpfun &optional combfun maxnum)
   ;; Destructively merge together sorted lists LIST1 and LIST2, sorting
   ;; elements according to CMPFUN. For non-null MAXNUM, only the first MAXNUM
@@ -1775,25 +1746,29 @@ Returns nil if the stack is empty."
 ;; ----------------------------------------------------------------
 ;;             Functions for building advanced queries
 
-(defun dictree--query (query-type dict arg
+(defun dictree--query (dict arg cachefun cacheparamfun triefun stackfun
 		       &optional
 		       rank-function maxnum reverse no-cache filter
 		       strip-data)
-  ;; Return results of QUERY-TYPE (currently, only 'complete is implemented)
-  ;; with argument ARG on dictionary DICT. If RANK-FUNCTION is non-nil, return
-  ;; results ordered accordingly. If MAXNUM is an integer, only the first
-  ;; MAXNUM results will be returned. If REVERSE is non-nil, results are in
-  ;; reverse order. A non-nil NO-CACHE prevents caching of results,
-  ;; irrespective of DICT's cache settings. If supplied, only results that
-  ;; pass FILTER are included. A non-nil STRIP-DATA returns a list of
+  ;; Return results of querying DICT's trie with argument ARG using TRIEFUN or
+  ;; STACKFUN. If result of calling CACHEPARAMFUN on DICT is non-nil, look
+  ;; first for cached result in cache returned by calling CACHEFUN on DICT,
+  ;; and cache result if query fulfils caching conditions. If RANK-FUNCTION is
+  ;; non-nil, return results ordered accordingly. If MAXNUM is an integer,
+  ;; only the first MAXNUM results will be returned. If REVERSE is non-nil,
+  ;; results are in reverse order. A non-nil NO-CACHE prevents caching of
+  ;; results, irrespective of DICT's cache settings. If supplied, only results
+  ;; that pass FILTER are included. A non-nil STRIP-DATA returns a list of
   ;; keys. Otherwise, an alist of key-data associations is returned.
 
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
 
-  (let (cache completions cmpl)
+  (let (cache cacheparam completions cmpl)
     ;; map over all dictionaries in list
     (dolist (dic dict)
+      (setq cache (funcall cachefun dic)
+	    cacheparam (funcall cacheparamfun dic))
       (cond
        ;; If FILTER or custom RANK-FUNCTION was specified, look in trie since
        ;; we don't cache custom searches. We pass a slightly redefined filter
@@ -1802,19 +1777,16 @@ Returns nil if the stack is empty."
 	    (and rank-function
 		 (not (eq rank-function (dictree-rank-function dic)))))
 	(setq cmpl
-	      (dictree--do-query
-	       query-type dic arg rank-function maxnum reverse
+	      (dictree--do-query dic arg triefun stackfun
+				 rank-function maxnum reverse
 	       (when filter
 		 (dictree--wrap-filter filter)))))
 
 
        ;; if there's a cached result with enough completions, use it
        ((and (setq cache
-		   (if (dictree--query-cacheparam query-type dic
-						  rank-function)
-		       (gethash (cons arg reverse)
-				(dictree--query-cache
-				 query-type dic rank-function))
+		   (if cacheparam
+		       (gethash (cons arg reverse) cache)
 		     nil))
 	     (or (null (dictree--cache-maxnum cache))
 		 (and maxnum (<= maxnum (dictree--cache-maxnum cache)))))
@@ -1829,31 +1801,25 @@ Returns nil if the stack is empty."
        (t  ;; if there was nothing useful in the cache, do query and time it
 	(let (time)
 	  (setq time (float-time))
-	  (setq cmpl (dictree--do-query
-		      query-type dic arg rank-function maxnum reverse nil))
+	  (setq cmpl (dictree--do-query dic arg triefun stackfun
+					rank-function maxnum reverse nil))
 	  (setq time (- (float-time) time))
 	  ;; if we're above the dictionary's completion cache threshold, cache
 	  ;; the result
 	  (when (and (not no-cache)
-		     (dictree--query-cacheparam query-type dic rank-function)
-		     (or (eq (dictree--query-cacheparam
-			      query-type dic rank-function)
-			     t)
+		     cacheparam
+		     (or (eq cacheparam t)
 			 (and (or (eq (dictree-cache-policy dic) 'time)
 				  (eq (dictree-cache-policy dic) 'both))
-			      (>= time (dictree--query-cacheparam
-					query-type dic rank-function)))
+			      (>= time cacheparam))
 			 (and (or (eq (dictree-cache-policy dic) 'length)
 				  (eq (dictree-cache-policy dic) 'both))
 			  ;; note: we cache completions of *shorter* keys,
 			  ;;       because those are likely to be slower
-			      (<= (length arg)
-				  (dictree--query-cacheparam
-				   query-type dic rank-function)))))
+			      (<= (length arg) cacheparam))))
 	    (setf (dictree-modified dic) t)
-	    (puthash (cons arg reverse)
-		     (dictree--cache-create cmpl maxnum)
-		     (dictree--query-cache query-type dic rank-function))))))
+	    (puthash (cons arg reverse) (dictree--cache-create cmpl maxnum)
+		     cache)))))
 
       ;; merge new completion into completions list
       (setq completions
@@ -1875,17 +1841,16 @@ Returns nil if the stack is empty."
     ))
 
 
-(defun dictree--do-query (query-type dict arg
+(defun dictree--do-query (dict arg triefun stackfun
 			  &optional
 			  rank-function maxnum reverse filter)
-  ;; Return first MAXNUM results of running QUERY-TYPE on DICT that satisfy
-  ;; FILTER, ordered according to RANK-FUNCTION (defaulting to "lexical"
-  ;; order).
+  ;; Return first MAXNUM results of querying DICT with ARG using TRIEFUN or
+  ;; STACKFUN that satisfy FILTER, ordered according to RANK-FUNCTION
+  ;; (defaulting to "lexical" order).
 
   ;; for a meta-dict, use a dictree-stack
   (if (dictree--meta-dict-p dict)
-      (let ((stack (funcall (dictree--query-stackfun query-type)
-			    dict arg reverse))
+      (let ((stack (funcall stackfun dict arg reverse))
 	    (heap (when rank-function
 		    (heap-create     ; heap order is inverse of rank order
 			(if reverse
@@ -1917,7 +1882,7 @@ Returns nil if the stack is empty."
 
     ;; for a normal dict, call corresponding trie function on dict's trie
     ;; Note: could use a dictree-stack here too - would it be more efficient?
-    (funcall (dictree--query-triefun query-type)
+    (funcall triefun
 	     (dictree--trie dict) arg
 	     (when rank-function (dictree--wrap-rankfun rank-function))
 	     maxnum reverse filter)))
@@ -1976,7 +1941,14 @@ If STRIP-DATA is non-nil, a list of completions is
 returned (rather than an alist), without the data."
   ;; run completion query
   (dictree--query
-   'complete dict prefix
+   dict prefix
+   (if rank-function
+       'dictree--complete-ranked-cache
+     'dictree--complete-cache)
+   (if rank-function
+       'dictree--complete-ranked-cache-threshold
+     'dictree--complete-cache-threshold dict)
+   'trie-complete 'trie-complete-stack
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
