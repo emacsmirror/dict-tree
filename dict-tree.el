@@ -273,7 +273,7 @@ If START or END is negative, it counts from the end."
 (defalias 'dictree--cache-create 'cons)  ; INTERNAL USE ONLY
 
 ;; Return the completions list for cache entry CACHE
-(defalias 'dictree--cache-completions 'car)  ; INTERNAL USE ONLY
+(defalias 'dictree--cache-results 'car)  ; INTERNAL USE ONLY
 
 ;; Return the max number of completions returned for cache entry CACHE
 (defalias 'dictree--cache-maxnum 'cdr)  ; INTERNAL USE ONLY
@@ -336,6 +336,8 @@ If START or END is negative, it counts from the end."
 		  lookup-cache-threshold
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
+		  wildcard-cache-threshold
+		  wildcard-ranked-cache-threshold
 		  key-savefun key-loadfun
 		  data-savefun data-loadfun
 		  plist-savefun plist-loadfun
@@ -357,6 +359,14 @@ If START or END is negative, it counts from the end."
 		   (if complete-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
+		  (wildcard-cache
+		   (if wildcard-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
+		  (wildcard-ranked-cache
+		   (if wildcard-ranked-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
 		  (metadict-list nil)
 		  ))
    (:constructor dictree--create-custom
@@ -375,6 +385,8 @@ If START or END is negative, it counts from the end."
 		  lookup-cache-threshold
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
+		  wildcard-cache-threshold
+		  wildcard-ranked-cache-threshold
 		  key-savefun key-loadfun
 		  data-savefun data-loadfun
 		  plist-savefun plist-loadfun
@@ -411,6 +423,14 @@ If START or END is negative, it counts from the end."
 		   (if complete-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
+		  (wildcard-cache
+		   (if wildcard-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
+		  (wildcard-ranked-cache
+		   (if wildcard-ranked-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
 		  (metadict-list nil)
 		  ))
    (:copier nil))
@@ -420,6 +440,8 @@ If START or END is negative, it counts from the end."
   lookup-cache lookup-cache-threshold
   complete-cache complete-cache-threshold
   complete-ranked-cache complete-ranked-cache-threshold
+  wildcard-cache wildcard-cache-threshold
+  wildcard-ranked-cache wildcard-ranked-cache-threshold
   key-savefun key-loadfun
   data-savefun data-loadfun
   plist-savefun plist-loadfun
@@ -444,6 +466,8 @@ If START or END is negative, it counts from the end."
 		  lookup-cache-threshold
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
+		  wildcard-cache-threshold
+		  wildcard-ranked-cache-threshold
 		  &aux
 		  (dictlist
 		   (mapcar
@@ -454,6 +478,26 @@ If START or END is negative, it counts from the end."
 		       (t (error "Invalid object in DICTIONARY-LIST"))))
 		    dictionary-list))
 		  (combfun (dictree--wrap-combfun combine-function))
+		  (lookup-cache
+		   (if lookup-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
+		  (complete-cache
+		   (if complete-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
+		  (complete-ranked-cache
+		   (if complete-ranked-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
+		  (wildcard-cache
+		   (if wildcard-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
+		  (wildcard-ranked-cache
+		   (if wildcard-ranked-cache-threshold
+		       (make-hash-table :test 'equal)
+		     nil))
 		  ))
    (:copier nil))
   name filename autosave modified
@@ -462,6 +506,8 @@ If START or END is negative, it counts from the end."
   lookup-cache lookup-cache-threshold
   complete-cache complete-cache-threshold
   complete-ranked-cache complete-ranked-cache-threshold
+  wildcard-cache wildcard-cache-threshold
+  wildcard-ranked-cache wildcard-ranked-cache-threshold
   dictlist meta-dict-list)
 
 
@@ -554,6 +600,8 @@ If START or END is negative, it counts from the end."
    lookup-cache-threshold
    complete-cache-threshold
    complete-ranked-cache-threshold
+   wildcard-cache-threshold
+   wildcard-ranked-cache-threshold
    key-savefun key-loadfun
    data-savefun data-loadfun
    plist-savefun plist-loadfun
@@ -669,6 +717,8 @@ structure. See `trie-create' for details."
 	  lookup-cache-threshold
 	  complete-cache-threshold
 	  complete-ranked-cache-threshold
+	  wildcard-cache-threshold
+	  wildcard-ranked-cache-threshold
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -691,6 +741,8 @@ structure. See `trie-create' for details."
      lookup-cache-threshold
      complete-cache-threshold
      complete-ranked-cache-threshold
+     wildcard-cache-threshold
+     wildcard-ranked-cache-threshold
      key-savefun key-loadfun
      data-savefun data-loadfun
      plist-savefun plist-loadfun
@@ -723,6 +775,8 @@ underlying data structure. See `trie-create' for details."
 	  lookup-cache-threshold
 	  complete-cache-threshold
 	  complete-ranked-cache-threshold
+	  wildcard-cache-threshold
+	  wildcard-ranked-cache-threshold
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -754,7 +808,9 @@ underlying data structure. See `trie-create' for details."
    cache-policy cache-update-policy
    lookup-cache-threshold
    complete-cache-threshold
-   complete-ranked-cache-threshold)
+   complete-ranked-cache-threshold
+   wildcard-cache-threshold
+   wildcard-ranked-cache-threshold)
   "Create a meta-dictionary based on the list of dictionaries
 in DICTIONARY-LIST.
 
@@ -781,7 +837,9 @@ The other arguments are as for `dictree-create'."
 	  cache-policy cache-update-policy
 	  lookup-cache-threshold
 	  complete-cache-threshold
-	  complete-ranked-cache-threshold)
+	  complete-ranked-cache-threshold
+	  wildcard-cache-threshold
+	  wildcard-ranked-cache-threshold)
 	 ))
     ;; store dictionary in variable NAME
     (when name (set name dict))
@@ -959,6 +1017,42 @@ The other arguments are as for `dictree-create'."
       (dictree--meta-dict-complete-ranked-cache dict)
     (dictree--complete-ranked-cache dict)))
 
+(defsubst dictree-wildcard-cache-threshold (dict)
+  "Return the wildcard cache threshold for dictionary DICT."
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-wildcard-cache-threshold dict)
+    (dictree--wildcard-cache-threshold dict)))
+
+(defsetf dictree-wildcard-cache-threshold (dict) (param)
+  ;; setf method for wildcard cache threshold
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-wildcard-cache-threshold ,dict) ,param)
+     (setf (dictree--wildcard-cache-threshold ,dict) ,param)))
+
+(defun dictree-wildcard-cache (dict)
+  ;; Return the wildcard cache for dictionary DICT.
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-wildcard-cache dict)
+    (dictree--wildcard-cache dict)))
+
+(defsubst dictree-wildcard-ranked-cache-threshold (dict)
+  "Return the ranked wildcard cache threshold for dictionary DICT."
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-wildcard-ranked-cache-threshold dict)
+    (dictree--wildcard-ranked-cache-threshold dict)))
+
+(defsetf dictree-wildcard-ranked-cache-threshold (dict) (param)
+  ;; setf method for ranked wildcard cache threshold
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-wildcard-ranked-cache-threshold ,dict) ,param)
+     (setf (dictree--wildcard-ranked-cache-threshold ,dict) ,param)))
+
+(defun dictree-wildcard-ranked-cache (dict)
+  ;; Return the ranked wildcard cache for dictionary DICT.
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-wildcard-ranked-cache dict)
+    (dictree--wildcard-ranked-cache dict)))
+
 
 
 ;; ----------------------------------------------------------------
@@ -1057,130 +1151,171 @@ TEST returns non-nil."
   ;; Synchronise dictionary DICT's caches, given that the data associated with
   ;; KEY has been changed to NEWDATA, or KEY has been deleted if DELETED is
   ;; non-nil (NEWDATA is ignored in that case)."
-  (let (prefix cache entry completions cmpl maxnum)
+  (let (arg reverse cache cache-entry completions cmpl maxnum)
 
-    ;; synchronise the lookup cache if dict is a meta-dictionary,
-    ;; since it's not done automatically
+    ;; synchronise the lookup cache if dict is a meta-dictionary, since it's
+    ;; not done automatically
     (when (and (dictree--meta-dict-p dict)
 	       (dictree--lookup-cache-threshold dict))
+      (setq cache (dictree--lookup-cache dict))
       (cond
        ;; if updating dirty cache entries...
        ((eq (dictree-cache-update-policy dict) 'synchronize)
-	(when (gethash key (dictree--lookup-cache dict))
-	  (if deleted
-	      (remhash key (dictree--lookup-cache dict))
-	    (puthash key newdata (dictree--lookup-cache dict)))))
+	(when (gethash key cache)
+	  (if deleted (remhash key cache) (puthash key newdata cache))))
        ;; if deleting dirty cache entries...
-       (t  ; (eq (dictree-cache-update-policy dict) 'delete)
-	(remhash key (dictree-complete-cache dict)))))
-
+       (t (remhash key cache))))
 
     ;; synchronize the completion cache, if it exists
     (when (dictree-complete-cache-threshold dict)
+      (setq cache (dictree--complete-cache dict))
       ;; have to check every possible prefix that could be cached!
       (dotimes (i (1+ (length key)))
-	(setq prefix (dictree--subseq key 0 i))
+	(setq arg (dictree--subseq key 0 i))
 	(dolist (reverse '(nil t))
-	  (cond
-
-	   ;; if updating dirty cache entries...
-	   ((eq (dictree-cache-update-policy dict) 'delete)
-	    (when (setq cache (gethash (cons prefix reverse)
-				       (dictree-complete-cache dict)))
-	      (setq completions (dictree--cache-completions cache))
-	      (setq maxnum (dictree--cache-maxnum cache))
-	      (setq cmpl (assoc key completions))
-	      (cond
-	       ;; if key was deleted and was in cached result, remove cache
-	       ;; entry and re-run the same completion to update the cache
-	       ((and deleted cmpl)
-		(remhash (cons prefix reverse) (dictree-complete-cache dict))
-		(dictree-complete dict prefix nil maxnum reverse))
-	       ;; if key was modified and was not in cached result, merge it
-	       ;; into the completion list, retaining only the first maxnum
-	       ((and (not deleted) (not cmpl))
-		(dictree--cache-set-completions
-		 cache
-		 (dictree--merge
-		  (list (cons key newdata)) completions
-		  `(lambda (a b)
-		     (,(trie-construct-sortfun
-			(dictree-comparison-function dict))
-		      (car a) (car b)))
-		  (when (dictree--meta-dict-p dict)
-		    (dictree--meta-dict-combfun dict))
-		  maxnum)))
-	       ;; if key was modified and was in the cached result, update the
-	       ;; associated data if dict is a meta-dictionary (this is done
-	       ;; automatically for a normal dict)
-	       ((and (not deleted) cmpl (dictree--meta-dict-p dict))
-		(setcdr cmpl newdata))
-	       ;; the final combination, deleted and not in cached result,
-	       ;; requires no action
-	       )))
-
-	   ;; if deleting dirty cache entries...
-	   (t  ; (eq (dictree-cache-update-policy dict) 'delete)
-	    (remhash (cons prefix reverse) (dictree-complete-cache dict)))
-	   ))))
-
+	  (when (setq cache-entry (gethash (cons arg reverse) cache))
+	    (cond
+	     ;; if updating dirty cache entries...
+	     ((eq (dictree-cache-update-policy dict) 'synchronize)
+	      (dictree--synchronize-query-cache dict cache cache-entry
+						arg reverse key newdata deleted))
+	     ;; if deleting dirty cache entries...
+	     (t (remhash (cons arg reverse) cache)))))))
 
     ;; synchronize the ranked completion cache, if it exists
     (when (dictree--complete-ranked-cache-threshold dict)
+      (setq cache (dictree--complete-ranked-cache dict))
       ;; have to check every possible prefix that could be cached!
       (dotimes (i (1+ (length key)))
-	(setq prefix (dictree--subseq key 0 i))
+	(setq arg (dictree--subseq key 0 i))
 	(dolist (reverse '(nil t))
-	  (cond
+	  (when (setq cache-entry (gethash (cons arg reverse) cache))
+	    (cond
+	     ;; if updating dirty cache entries...
+	     ((eq (dictree-cache-update-policy dict) 'synchronize)
+	      (dictree--synchronize-ranked-query-cache dict cache cache-entry
+						       arg reverse
+						       key newdata deleted))
+	     ;; if deleting dirty cache entries...
+	     (t (remhash (cons arg reverse) cache)))))))
 
-	   ;; if updating dirty cache entries...
-	   ((eq (dictree-cache-update-policy dict) 'synchronize)
-	    (when (setq cache (gethash (cons prefix reverse)
-				       (dictree-complete-ranked-cache dict)))
-	      (setq completions (dictree--cache-completions cache))
-	      (setq maxnum (dictree--cache-maxnum cache))
-	      (setq cmpl (assoc key completions))
-	      (cond
-	       ;; if key was deleted and was in cached result, remove cache
-	       ;; entry and re-run the same query to update the cache
-	       ((and deleted cmpl)
-		(remhash (cons prefix reverse)
-			 (dictree-complete-ranked-cache dict))
-		(dictree-complete dict prefix 'ranked maxnum reverse))
-	       ;; if key was modified and was not in cached result, merge it
-	       ;; into the completion list, retaining only the first maxnum
-	       ((and (not deleted) (not cmpl))
-		(dictree--cache-set-completions
-		 cache
-		 (dictree--merge
-		  (list (cons key newdata)) completions
-		  (dictree-rankfun dict)
-		  (when (dictree--meta-dict-p dict)
-		    (dictree--meta-dict-combfun dict))
-		  maxnum)))
-	       ;; if key was modified and was in the cached result, update the
-	       ;; associated data if dict is a meta-dictionary (this is done
-	       ;; automatically for a normal dict), re-sort, and if key is now
-	       ;; at end of list re-run the same query to update the cache
-	       ((and (not deleted) cmpl)
-		(when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
-		(dictree--cache-set-completions
-		 cache (sort completions (dictree-rankfun dict)))
-		(when (equal key (car (last completions)))
-		  (remhash (cons prefix reverse)
-			   (dictree-complete-ranked-cache dict))
-		  (dictree-complete dict prefix 'ranked maxnum reverse)))
-	       ;; the final combination, deleted and not in cached result,
-	       ;; requires no action
-	       )))
+    ;; synchronize the wildcard cache, if it exists
+    (when (dictree-wildcard-cache-threshold dict)
+      (setq cache (dictree--wildcard-cache dict))
+      ;; have to check every cache entry to see if it matches
+      (maphash
+       (lambda (cache-key cache-entry)
+	 (setq arg (car cache-key))
+	 (when (trie-wildcard-match arg key
+				    (dictree--comparison-function dict))
+	   (setq reverse (cdr cache-key))
+	   (cond
+	    ;; if updating dirty cache entries...
+	    ((eq (dictree-cache-update-policy dict) 'synchronize)
+	     (dictree--synchronize-ranked-query-cache dict cache cache-entry
+						      arg reverse
+						      key newdata deleted))
+	    ;; if deleting dirty cache entries...
+	    (t (remhash (cons arg reverse) cache)))))
+       (dictree--wildcard-cache dict)))
 
-	   ;; if deleting dirty cache entries...
-	   (t  ; (eq (dictree-cache-update-policy dict) 'delete)
-	    (remhash (cons prefix reverse) (dictree-complete-cache dict)))
-	   ))))
+    ;; synchronize the ranked wildcard cache, if it exists
+    (when (dictree--wildcard-ranked-cache-threshold dict)
+      (setq cache (dictree--wildcard-ranked-cache dict))
+      ;; have to check every cache entry to see if it matches
+      (maphash
+       (lambda (cache-key cache-entry)
+	 (setq arg (car cache-key))
+	 (when (trie-wildcard-match arg key
+				    (dictree--comparison-function dict))
+	   (setq reverse (cdr cache-key))
+	   (cond
+	    ;; if updating dirty cache entries...
+	    ((eq (dictree-cache-update-policy dict) 'synchronize)
+	     (dictree--synchronize-ranked-query-cache dict cache cache-entry
+						      arg reverse
+						      key newdata deleted))
+	    ;; if deleting dirty cache entries...
+	    (t (remhash (cons arg reverse) cache)))))
+       (dictree--wildcard-ranked-cache dict)))
     ))
 
 
+
+(defun dictree--synchronize-query-cache
+  (dict cache cache-entry arg reverse key newdata deleted)
+  ;; Synchronize DICT's query CACHE CACHE-ENTRY for ARG and REVERSE, for a KEY
+  ;; whose data was either updated to NEWDATA or DELETED.
+  (let* ((completions (dictree--cache-results cache-entry))
+	 (maxnum (dictree--cache-maxnum cache-entry))
+	 (cmpl (assoc key completions)))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the same
+     ;; completion to update the cache
+     ((and deleted cmpl)
+      (remhash (cons arg reverse) (dictree-complete-cache dict))
+      (dictree-complete dict arg nil maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion list,
+     ;; retaining only the first maxnum
+     ((and (not deleted) (not cmpl))
+      (dictree--cache-set-completions
+       cache-entry
+       (dictree--merge
+	(list (cons key newdata)) completions
+	`(lambda (a b)
+	   (,(trie-construct-sortfun
+	      (dictree-comparison-function dict))
+	    (car a) (car b)))
+	(when (dictree--meta-dict-p dict) (dictree--meta-dict-combfun dict))
+	maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this is done automatically for a normal dict)
+     ((and (not deleted) cmpl (dictree--meta-dict-p dict))
+      (setcdr cmpl newdata))
+     ;; deleted and not in cached result: requires no action
+     )))
+
+
+
+(defun dictree--synchronize-ranked-query-cache
+  (dict cache cache-entry arg reverse key newdata deleted)
+  ;; Synchronize DICT's ranked query CACHE CACHE-ENTRY for ARG and REVERSE,
+  ;; for a KEY whose data was either updated to NEWDATA or DELETED.
+  (let* ((completions (dictree--cache-results cache-entry))
+	 (maxnum (dictree--cache-maxnum cache-entry))
+	 (cmpl (assoc key completions)))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the same
+     ;; query to update the cache
+     ((and deleted cmpl)
+      (remhash (cons arg reverse) cache)
+      (dictree-complete dict arg 'ranked maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion list,
+     ;; retaining only the first maxnum
+     ((and (not deleted) (not cmpl))
+      (dictree--cache-set-completions
+       cache-entry
+       (dictree--merge
+	(list (cons key newdata)) completions
+	(dictree-rankfun dict)
+	(when (dictree--meta-dict-p dict)
+	  (dictree--meta-dict-combfun dict))
+	maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this is done automatically for a normal dict),
+     ;; re-sort, and if key is now at end of list re-run the same query to
+     ;; update the cache
+     ((and (not deleted) cmpl)
+      (when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
+      (dictree--cache-set-completions
+       cache-entry (sort completions (dictree-rankfun dict)))
+      (when (equal key (car (last completions)))
+	(remhash (cons arg reverse) cache)
+	(dictree-complete dict arg 'ranked maxnum reverse)))
+     ;; deleted and not in cached result: requires no action
+     )))
 
 ;; ----------------------------------------------------------------
 ;;                        Retrieving data
@@ -1791,7 +1926,7 @@ Returns nil if the stack is empty."
 	     (or (null (dictree--cache-maxnum cache-entry))
 		 (and maxnum
 		      (<= maxnum (dictree--cache-maxnum cache-entry)))))
-	(setq cmpl (dictree--cache-completions cache-entry))
+	(setq cmpl (dictree--cache-results cache-entry))
 	;; drop any excess completions
 	(when (and maxnum
 		   (or (null (dictree--cache-maxnum cache-entry))
@@ -1893,10 +2028,9 @@ Returns nil if the stack is empty."
 ;; ----------------------------------------------------------------
 ;;                        Completing
 
-(defun dictree-complete (dict prefix
-			 &optional
-			 rank-function maxnum reverse no-cache filter
-			 strip-data)
+(defun dictree-complete
+  (dict prefix
+	&optional rank-function maxnum reverse no-cache filter strip-data)
   "Return an alist containing all completions of sequence PREFIX
 from dictionary DICT, along with their associated data, sorted
 according to RANK-FUNCTION (defaulting to \"lexical\" order, i.e. the
@@ -1975,6 +2109,29 @@ completion, and its associated data."
 	completions
       (try-completion "" completions))))
 
+
+
+;; ----------------------------------------------------------------
+;;                      Wildcard search
+
+(defun dictree-wildcard-search
+  (dict pattern
+	&optional rank-function maxnum reverse no-cache filter strip-data)
+  ;; run wildcard query
+  (dictree--query
+   dict pattern
+   (if rank-function
+       'dictree--wildcard-ranked-cache
+     'dictree--wildcard-cache)
+   (if rank-function
+       'dictree--wildcard-ranked-cache-threshold
+     'dictree--wildcard-cache-threshold dict)
+   'trie-wildcard-search 'trie-wildcard-stack
+   (when rank-function
+     (if (functionp rank-function)
+	 rank-function
+       (dictree-rank-function (if (listp dict) (car dict) dict))))
+   maxnum reverse no-cache filter strip-data))
 
 
 
@@ -2237,8 +2394,9 @@ is the prefix argument."
 (defun dictree--write-dict-code (dict dictname filename)
   ;; Write code for normal dictionary DICT to current buffer, giving it the
   ;; name DICTNAME and file FILENAME.
-  (let (hashcode tmpdict tmptrie
-	lookup-alist complete-alist complete-ranked-alist)
+  (let (hashcode tmpdict tmptrie lookup-alist
+	complete-alist complete-ranked-alist
+	wildcard-alist wildcard-ranked-alist)
 
     ;; --- convert trie data ---
     ;; if dictionary doesn't use any custom save functions, write dictionary's
@@ -2246,8 +2404,7 @@ is the prefix argument."
     (setq tmptrie (dictree--trie dict))
     ;; otherwise, create a temporary trie and populate it with the converted
     ;; contents of the dictionary's trie
-    (when (or (dictree--data-savefun dict)
-	      (dictree--plist-savefun dict))
+    (when (or (dictree--data-savefun dict) (dictree--plist-savefun dict))
       (setq tmptrie
 	    (trie-create-custom
 	     (trie-comparison-function tmptrie)
@@ -2270,57 +2427,36 @@ is the prefix argument."
 		       (funcall (or (dictree--plist-savefun dict)
 				    'identity)
 				(dictree--cell-plist cell)))))
-       (dictree--trie dict)))
+       (dictree--trie dict))
 
-    ;; generate code to convert contents of trie back to original form
-    (cond
-     ;; convert both data and plist
-     ((and (dictree--data-loadfun dict) (dictree--plist-loadfun dict))
+      ;; generate code to convert contents of trie back to original form
       (setq hashcode
 	    (concat
 	     hashcode
-	     "(trie-map\n"
-	     " (lambda (key cell)\n"
-	     "    (dictree--cell-create\n"
-	     "     (funcall (dictree--data-loadfun " dictname ")\n"
-	     "              (dictree--cell-data cell))\n"
-	     "     (funcall (dictree--plist-loadfun " dictname ")\n"
-	     "              (dictree--cell-plist cell))))\n"
+	     " (trie-map\n"
+	     "  (lambda (key cell)\n"
+	     "     (dictree--cell-create\n"
+	     (if (dictree--data-loadfun dict)
+		 (concat
+		  "(funcall (dictree--data-loadfun " dictname ")\n"
+		  "         (dictree--cell-data cell))\n")
+	       "   (dictree--cell-data cell)\n")
+	     (if (dictree--plist-loadfun dict)
+		 (concat
+		  "(funcall (dictree--plist-loadfun " dictname ")\n"
+		  "         (dictree--cell-plist cell))))\n")
+	       "   (dictree--cell-plist cell)))\n")
 	     " (dictree--trie " dictname "))\n")))
-     ;; convert only data
-     ((dictree--data-loadfun dict)
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(trie-map\n"
-	     " (lambda (key cell)\n"
-	     "    (dictree--cell-create\n"
-	     "     (funcall (dictree--data-loadfun " dictname ")\n"
-	     "              (dictree--cell-data cell))\n"
-	     "     (dictree--cell-plist cell)))\n"
-	     " (dictree--trie " dictname "))\n")))
-     ;; convert only plist
-     ((dictree--plist-loadfun dict)
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(trie-map\n"
-	     " (lambda (key cell)\n"
-	     "    (dictree--cell-create\n"
-	     "     (dictree--cell-data cell)\n"
-	     "     (funcall (dictree--plist-loadfun " dictname ")\n"
-	     "              (dictree--cell-plist cell))))\n"
-	     " (dictree--trie " dictname "))\n"))))
 
 
-    ;; --- convert hash tables to alists ---
+    ;; --- convert caches for writing to file ---
     ;; convert lookup cache hash table to alist, if it exists
     (when (dictree--lookup-cache-threshold dict)
       (maphash
        (lambda (key val)
 	 (push
 	  (cons key
-		(cons (mapcar 'car (dictree--cache-completions val))
+		(cons (mapcar 'car (dictree--cache-results val))
 		      (dictree--cache-maxnum val)))
 	  lookup-alist))
        (dictree--lookup-cache dict))
@@ -2338,7 +2474,7 @@ is the prefix argument."
 	     "       (mapcar\n"
 	     "        (lambda (key)\n"
 	     "          (cons key (trie-member trie key)))\n"
-	     "        (dictree--cache-completions (cdr entry)))\n"
+	     "        (dictree--cache-results (cdr entry)))\n"
 	     "       (dictree--cache-maxnum (cdr entry)))\n"
 	     "      lookup-cache))\n"
 	     "   (dictree--lookup-cache " dictname "))\n"
@@ -2346,120 +2482,109 @@ is the prefix argument."
 	     "        lookup-cache))\n"
 	     )))
 
-    ;; convert completion cache hash table to alist, if it exists
-    (when (dictree--complete-cache-threshold dict)
-      (maphash
-       (lambda (key val)
-	 (push
-	  (cons key
-		(cons (mapcar 'car (dictree--cache-completions val))
-		      (dictree--cache-maxnum val)))
-	  complete-alist))
-       (dictree-complete-cache dict))
-      ;; generate code to reconstruct the completion hash table
-      (setq
-       hashcode
-       (concat
-	hashcode
-	"(let ((complete-cache (make-hash-table :test 'equal))\n"
-	"      (trie (dictree--trie " dictname ")))\n"
-	"  (mapc\n"
-	"   (lambda (entry)\n"
-	"     (puthash\n"
-	"      (car entry)\n"
-	"      (dictree--cache-create\n"
-	"       (mapcar\n"
-	"        (lambda (key)\n"
-	"          (cons key (trie-member trie key)))\n"
-	"        (dictree--cache-completions (cdr entry)))\n"
-	"       (dictree--cache-maxnum (cdr entry)))\n"
-	"      complete-cache))\n"
-	"   (dictree--complete-cache " dictname "))\n"
-	"  (setf (dictree--complete-cache " dictname ")\n"
-	"        complete-cache))\n"
-	)))
-
-    ;; convert ranked completion cache hash table to alist, if it exists
-    (when (dictree--complete-ranked-cache-threshold dict)
-      (maphash
-       (lambda (key val)
-	 (push
-	  (cons key
-		(cons (mapcar 'car (dictree--cache-completions val))
-		      (dictree--cache-maxnum val)))
-	  complete-ranked-alist))
-       (dictree--complete-ranked-cache dict))
-      ;; generate code to reconstruct the ordered hash table
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(let ((complete-ranked-cache (make-hash-table :test 'equal))\n"
-	     "      (trie (dictree--trie " dictname ")))\n"
-	     "  (mapc\n"
-	     "   (lambda (entry)\n"
-	     "     (puthash\n"
-	     "      (car entry)\n"
-	     "      (dictree--cache-create\n"
-	     "       (mapcar\n"
-	     "        (lambda (key)\n"
-	     "          (cons key (trie-member trie key)))\n"
-	     "        (dictree--cache-completions (cdr entry)))\n"
-	     "       (dictree--cache-maxnum (cdr entry)))\n"
-	     "      complete-ranked-cache))\n"
-	     "   (dictree--complete-ranked-cache " dictname "))\n"
-	     "  (setf (dictree--complete-ranked-cache " dictname ")\n"
-	     "        complete-ranked-cache))\n"
-	     )))
+    ;; convert query caches, if they exist
+    (dolist (cache-details
+	     '((dictree--complete-cache-threshold
+		complete-alist dictree--complete-cache)
+	       (dictree--complete-ranked-cache-threshold
+		complete-ranked-alist dictree--complete-ranked-cache)
+	       (dictree--wildcard-cache-threshold
+		wildcard-alist dictree--wildcard-cache)
+	       (dictree--wildcard-ranked-cache-threshold
+		wildcard-ranked-alist dictree--wildcard-ranked-cache)))
+      (when (funcall (nth 0 cache-details) dict)
+	;; convert hash table to alist
+	(set (nth 1 cache-details)
+	     (let (alist)
+	       (maphash
+		(lambda (key val)
+		  (push
+		   (cons key
+			 (cons (mapcar 'car (dictree--cache-results val))
+			       (dictree--cache-maxnum val)))
+		   alist))
+		(funcall (nth 2 cache-details) dict))
+	       alist))
+	;; generate code to reconstruct hash table from alist
+	(setq
+	 hashcode
+	 (concat
+	  hashcode
+	  "(let ((cache (make-hash-table :test 'equal))\n"
+	  "      (trie (dictree--trie " dictname ")))\n"
+	  "  (mapc\n"
+	  "   (lambda (entry)\n"
+	  "     (puthash\n"
+	  "      (car entry)\n"
+	  "      (dictree--cache-create\n"
+	  "       (mapcar\n"
+	  "        (lambda (key)\n"
+	  "          (cons key (trie-member trie key)))\n"
+	  "        (dictree--cache-results (cdr entry)))\n"
+	  "       (dictree--cache-maxnum (cdr entry)))\n"
+	  "      cache))\n"
+	  "   (" (symbol-name (nth 2 cache-details)) " " dictname "))\n"
+	  "  (setf (" (symbol-name (nth 2 cache-details)) " " dictname ")\n"
+	  "        lookup-cache))\n"
+	  ))
+	))
 
 
     ;; --- write to file ---
     ;; generate the structure to save
     (setq tmpdict (dictree-create))
-    (setf (dictree--trie tmpdict) tmptrie)
-    (setf (dictree--name tmpdict) dictname)
-    (setf (dictree--filename tmpdict) filename)
-    (setf (dictree--autosave tmpdict)
-	  (dictree--autosave dict))
-    (setf (dictree--modified tmpdict) nil)
-    (setf (dictree--comparison-function tmpdict)
-	  (dictree--comparison-function dict))
-    (setf (dictree--insert-function tmpdict)
-	  (dictree--insert-function dict))
-    (setf (dictree--insfun tmpdict)
-	  (dictree--insfun dict))
-    (setf (dictree--rank-function tmpdict)
-	  (dictree--rank-function dict))
-    (setf (dictree--rankfun tmpdict)
-	  (dictree--rankfun dict))
-    (setf (dictree--cache-policy tmpdict)
-	  (dictree--cache-policy dict))
-    (setf (dictree--cache-update-policy tmpdict)
-	  (dictree--cache-update-policy dict))
-    (setf (dictree--lookup-cache tmpdict)
-	  lookup-alist)
-    (setf (dictree--lookup-cache-threshold tmpdict)
-	  (dictree--lookup-cache-threshold dict))
-    (setf (dictree--complete-cache tmpdict)
-	  complete-alist)
-    (setf (dictree--complete-cache-threshold tmpdict)
-	  (dictree--complete-cache-threshold dict))
-    (setf (dictree--complete-ranked-cache tmpdict)
-	  complete-ranked-alist)
-    (setf (dictree--complete-ranked-cache-threshold tmpdict)
-	  (dictree--complete-ranked-cache-threshold dict))
-    (setf (dictree--key-savefun tmpdict)
-	  (dictree--key-savefun dict))
-    (setf (dictree--key-loadfun tmpdict)
-	  (dictree--key-loadfun dict))
-    (setf (dictree--data-savefun tmpdict)
-	  (dictree--data-savefun dict))
-    (setf (dictree--data-loadfun tmpdict)
-	  (dictree--data-loadfun dict))
-    (setf (dictree--plist-savefun tmpdict)
-	  (dictree--plist-savefun dict))
-    (setf (dictree--plist-loadfun tmpdict)
-	  (dictree--plist-loadfun dict))
-    (setf (dictree--meta-dict-list tmpdict) nil)
+    (setf (dictree--trie tmpdict) tmptrie
+	  (dictree--name tmpdict) dictname
+	  (dictree--filename tmpdict) filename
+	  (dictree--autosave tmpdict) (dictree--autosave dict)
+	  (dictree--modified tmpdict) nil
+	  (dictree--comparison-function tmpdict)
+	    (dictree--comparison-function dict)
+	  (dictree--insert-function tmpdict)
+	    (dictree--insert-function dict)
+	  (dictree--insfun tmpdict)
+	    (dictree--insfun dict)
+	  (dictree--rank-function tmpdict)
+	    (dictree--rank-function dict)
+	  (dictree--rankfun tmpdict)
+	    (dictree--rankfun dict)
+	  (dictree--cache-policy tmpdict)
+	    (dictree--cache-policy dict)
+	  (dictree--cache-update-policy tmpdict)
+	    (dictree--cache-update-policy dict)
+	  (dictree--lookup-cache tmpdict)
+	    lookup-alist
+	  (dictree--lookup-cache-threshold tmpdict)
+	    (dictree--lookup-cache-threshold dict)
+	  (dictree--complete-cache tmpdict)
+	    complete-alist
+	  (dictree--complete-cache-threshold tmpdict)
+	    (dictree--complete-cache-threshold dict)
+	  (dictree--complete-ranked-cache tmpdict)
+	    complete-ranked-alist
+	  (dictree--complete-ranked-cache-threshold tmpdict)
+	    (dictree--complete-ranked-cache-threshold dict)
+	  (dictree--wildcard-cache tmpdict)
+	    wildcard-alist
+	  (dictree--wildcard-cache-threshold tmpdict)
+	    (dictree--wildcard-cache-threshold dict)
+	  (dictree--wildcard-ranked-cache tmpdict)
+	    wildcard-ranked-alist
+	  (dictree--wildcard-ranked-cache-threshold tmpdict)
+	    (dictree--wildcard-ranked-cache-threshold dict)
+	  (dictree--key-savefun tmpdict)
+	    (dictree--key-savefun dict)
+	  (dictree--key-loadfun tmpdict)
+	    (dictree--key-loadfun dict)
+	  (dictree--data-savefun tmpdict)
+	    (dictree--data-savefun dict)
+	  (dictree--data-loadfun tmpdict)
+	    (dictree--data-loadfun dict)
+	  (dictree--plist-savefun tmpdict)
+	    (dictree--plist-savefun dict)
+	  (dictree--plist-loadfun tmpdict)
+	    (dictree--plist-loadfun dict)
+	  (dictree--meta-dict-list tmpdict) nil)
 
     ;; write lisp code that generates the dictionary object
     (let ((restore-print-circle print-circle)
@@ -2483,29 +2608,23 @@ is the prefix argument."
 	  (trie-transform-from-read (dictree--trie tmpdict))))
       (insert "(trie-transform-from-read (dictree--trie " dictname "))\n")
       (when hashcode (insert hashcode))
-;;;   (insert "(setf (dictree-filename " dictname ")\n"
-;;;           "      (locate-library \"" dictname "\"))\n")
       (insert "(unless (memq " dictname " dictree-loaded-list)\n"
 	      "  (push " dictname " dictree-loaded-list))\n")
-;;;   (insert "(provide '" dictname ")\n")
       (setq print-circle restore-print-circle
 	    print-level restore-print-level
 	    print-length restore-print-length))))
 
 
 
-
 (defun dictree--write-meta-dict-code (dict dictname filename)
   ;; Write code for meta-dictionary DICT to current buffer, giving it the name
   ;; DICTNAME and file FILENAME.
+  (let (hashcode tmpdict lookup-alist
+	complete-alist complete-ranked-alist
+	wildcard-alist wildcard-ranked-alist)
 
-  (let (hashcode tmpdict lookup-alist complete-alist
-		 complete-ranked-alist)
-
-    ;; dump caches to alists as necessary and generate code to reconstruct
-    ;; the hash tables from the alists
-
-    ;; create the lookup alist, if necessary
+    ;; --- convert caches for writing to file ---
+    ;; convert lookup cache hash table to an alist, if it exists
     (when (dictree--lookup-cache-threshold dict)
       (maphash (lambda (key val)
 		 (push (cons key (mapcar 'car val)) lookup-alist))
@@ -2521,68 +2640,71 @@ is the prefix argument."
 	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")"
 	            " lookup-cache))\n")))
 
-    ;; create the completion alist, if necessary
-    (when (dictree--complete-cache-threshold dict)
-      (maphash (lambda (key val)
-		 (push (cons key (mapcar 'car val)) complete-alist))
-	       (dictree--meta-dict-complete-cache dict))
-      ;; generate code to reconstruct the completion hash table
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(let ((complete-cache (make-hash-table :test 'equal)))\n"
-	     "  (mapc (lambda (entry)\n"
-	     "    (puthash (car entry) (cdr entry) complete-cache))\n"
-	     "    (dictree--meta-dict-complete-cache " dictname "))\n"
-	     "  (setf (dictree--meta-dict-complete-cache " dictname ")"
-	            " complete-cache))\n")))
+    ;; convert query caches, if they exist
+    (dolist (cache-details
+	     '((dictree--meta-dict-complete-cache-threshold
+		complete-alist
+		dictree--meta-dict-complete-cache)
+	       (dictree--meta-dict-complete-ranked-cache-threshold
+		complete-ranked-alist
+		dictree--meta-dict-complete-ranked-cache)
+	       (dictree--meta-dict-wildcard-cache-threshold
+		wildcard-alist
+		dictree--meta-dict-wildcard-cache)
+	       (dictree--meta-dict-wildcard-ranked-cache-threshold
+		wildcard-ranked-alist
+		dictree--meta-dict-wildcard-ranked-cache)))
+      (when (funcall (nth 0 cache-details) dict)
+	;; convert hash table to alist
+	(set (nth 1 cache-details)
+	     (let (alist)
+	       (maphash
+		(lambda (key val) (push (cons key val) alist))
+		(funcall (nth 2 cache-details) dict))
+	       alist))
+	;; generate code to reconstruct hash table from alist
+	(setq
+	 hashcode
+	 (concat
+	  hashcode
+	  "(let ((cache (make-hash-table :test 'equal)))\n"
+	  "  (mapc (lambda (entry)\n"
+	  "    (puthash (car entry) (cdr entry) complete-cache))\n"
+	  "    (" (symbol-name (nth 2 cache-details)) " " dictname "))\n"
+	  "  (setf (" (symbol-name (nth 2 cache-details)) " " dictname ")"
+	         " cache))\n"))))
 
-    ;; create the ordered completion alist, if necessary
-    (when (dictree--complete-ranked-cache-threshold dict)
-      (maphash (lambda (key val)
-		 (push (cons key val) complete-ranked-alist))
-	       (dictree--meta-dict-complete-ranked-cache dict))
-      ;; generate code to reconstruct the ordered hash table
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(let ((complete-ranked-cache (make-hash-table :test 'equal)))\n"
-	     "  (mapc (lambda (entry)\n"
-	     "    (puthash (car entry) (cdr entry) complete-ranked-cache))\n"
-	     "    (dictree--meta-dict-complete-ranked-cache " dictname "))\n"
-	     "  (setf (dictree--meta-dict-complete-ranked-cache " dictname ")"
-	            " complete-ranked-cache))\n")))
 
-
+    ;; --- write to file ---
     ;; generate the structure to save
     (setq tmpdict (dictree-create))
-    (setf (dictree--meta-dict-name tmpdict) dictname)
-    (setf (dictree--meta-dict-filename tmpdict) filename)
-    (setf (dictree--meta-dict-autosave tmpdict) (dictree--autosave dict))
-    (setf (dictree--meta-dict-modified tmpdict) nil)
-    (setf (dictree--meta-dict-combine-function tmpdict)
-	  (dictree--meta-dict-combine-function dict))
-    (setf (dictree--meta-dict-combfun tmpdict)
-	  (dictree--meta-dict-combfun dict))
-    (setf (dictree--meta-dict-cache-policy tmpdict)
-	  (dictree--meta-dict-cache-policy dict))
-    (setf (dictree--meta-dict-cache-update-policy tmpdict)
-	  (dictree--meta-dict-cache-update-policy dict))
-    (setf (dictree--meta-dict-lookup-cache tmpdict)
-	  lookup-alist)
-    (setf (dictree--meta-dict-lookup-cache-threshold tmpdict)
-	  (dictree--meta-dict-lookup-cache-threshold dict))
-    (setf (dictree--meta-dict-complete-cache tmpdict)
-	  complete-alist)
-    (setf (dictree--meta-dict-complete-cache-threshold tmpdict)
-	  (dictree--meta-dict-complete-cache-threshold dict))
-    (setf (dictree--meta-dict-complete-ranked-cache tmpdict)
-	  complete-ranked-alist)
-    (setf (dictree--meta-dict-complete-ranked-cache-threshold tmpdict)
-	  (dictree--meta-dict-complete-ranked-cache-threshold dict))
-    (setf (dictree--meta-dict-dictlist tmpdict)
-	  (dictree--meta-dict-dictlist dict))
-    (setf (dictree--meta-dict-meta-dict-list tmpdict) nil)
+    (setf (dictree--meta-dict-name tmpdict) dictname
+	  (dictree--meta-dict-filename tmpdict) filename
+	  (dictree--meta-dict-autosave tmpdict) (dictree--autosave dict)
+	  (dictree--meta-dict-modified tmpdict) nil
+	  (dictree--meta-dict-combine-function tmpdict)
+	    (dictree--meta-dict-combine-function dict)
+	  (dictree--meta-dict-combfun tmpdict)
+	    (dictree--meta-dict-combfun dict)
+	  (dictree--meta-dict-cache-policy tmpdict)
+	    (dictree--meta-dict-cache-policy dict)
+	  (dictree--meta-dict-cache-update-policy tmpdict)
+	    (dictree--meta-dict-cache-update-policy dict)
+	  (dictree--meta-dict-lookup-cache tmpdict)
+	    lookup-alist
+	  (dictree--meta-dict-lookup-cache-threshold tmpdict)
+	    (dictree--meta-dict-lookup-cache-threshold dict)
+	  (dictree--meta-dict-complete-cache tmpdict)
+	    complete-alist
+	  (dictree--meta-dict-complete-cache-threshold tmpdict)
+	    (dictree--meta-dict-complete-cache-threshold dict)
+	  (dictree--meta-dict-complete-ranked-cache tmpdict)
+	    complete-ranked-alist
+	  (dictree--meta-dict-complete-ranked-cache-threshold tmpdict)
+	    (dictree--meta-dict-complete-ranked-cache-threshold dict)
+	  (dictree--meta-dict-dictlist tmpdict)
+	    (dictree--meta-dict-dictlist dict)
+	  (dictree--meta-dict-meta-dict-list tmpdict) nil)
 
     ;; write lisp code that generates the dictionary object
     (insert "(eval-when-compile (require 'cl))\n")
@@ -2596,13 +2718,9 @@ is the prefix argument."
 	    " (mapcar (lambda (name) (eval (intern-soft name)))\n"
 	    "         (dictree--meta-dict-dictlist " dictname " )))\n")
     (when hashcode (insert hashcode))
-;;;     (insert "(setf (dictree-filename " dictname ")"
-;;; 	    " (locate-library \"" dictname "\"))\n")
     (insert "(unless (memq " dictname " dictree-loaded-list)"
 	    " (push " dictname " dictree-loaded-list))\n")
-;;; (insert "(provide '" dictname ")\n")
     ))
-
 
 
 
