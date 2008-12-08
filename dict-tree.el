@@ -1177,8 +1177,8 @@ TEST returns non-nil."
 	    (cond
 	     ;; if updating dirty cache entries...
 	     ((eq (dictree-cache-update-policy dict) 'synchronize)
-	      (dictree--synchronize-query-cache dict cache cache-entry
-						arg reverse key newdata deleted))
+	      (dictree--synchronize-query-cache
+	       dict cache cache-entry arg reverse key newdata deleted))
 	     ;; if deleting dirty cache entries...
 	     (t (remhash (cons arg reverse) cache)))))))
 
@@ -1977,6 +1977,7 @@ Returns nil if the stack is empty."
     ))
 
 
+
 (defun dictree--do-query (dict arg triefun stackfun
 			  &optional
 			  rank-function maxnum reverse filter)
@@ -2525,7 +2526,7 @@ is the prefix argument."
 	  "      cache))\n"
 	  "   (" (symbol-name (nth 2 cache-details)) " " dictname "))\n"
 	  "  (setf (" (symbol-name (nth 2 cache-details)) " " dictname ")\n"
-	  "        lookup-cache))\n"
+	  "        cache))\n"
 	  ))
 	))
 
@@ -2637,8 +2638,8 @@ is the prefix argument."
 	     "  (mapc (lambda (entry)\n"
 	     "    (puthash (car entry) (cdr entry) lookup-cache))\n"
 	     "    (dictree--meta-dict-lookup-cache " dictname "))\n"
-	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")"
-	            " lookup-cache))\n")))
+	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
+	     "        lookup-cache))\n")))
 
     ;; convert query caches, if they exist
     (dolist (cache-details
@@ -2671,8 +2672,8 @@ is the prefix argument."
 	  "  (mapc (lambda (entry)\n"
 	  "    (puthash (car entry) (cdr entry) complete-cache))\n"
 	  "    (" (symbol-name (nth 2 cache-details)) " " dictname "))\n"
-	  "  (setf (" (symbol-name (nth 2 cache-details)) " " dictname ")"
-	         " cache))\n"))))
+	  "  (setf (" (symbol-name (nth 2 cache-details)) " " dictname ")\n"
+	  "        cache))\n"))))
 
 
     ;; --- write to file ---
