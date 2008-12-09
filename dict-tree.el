@@ -2083,7 +2083,7 @@ returned (rather than an alist), without the data."
      'dictree--complete-cache)
    (if rank-function
        'dictree--complete-ranked-cache-threshold
-     'dictree--complete-cache-threshold dict)
+     'dictree--complete-cache-threshold)
    'trie-complete 'trie-complete-stack
    (when rank-function
      (if (functionp rank-function)
