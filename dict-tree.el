@@ -2032,11 +2032,11 @@ Returns nil if the stack is empty."
 (defun dictree-complete
   (dict prefix
 	&optional rank-function maxnum reverse no-cache filter strip-data)
-  "Return an alist containing all completions of sequence PREFIX
-from dictionary DICT, along with their associated data, sorted
-according to RANK-FUNCTION (defaulting to \"lexical\" order, i.e. the
-order defined by the dictionary's comparison function,
-cf. `dictree-create'). If no completions are found, return nil.
+  "Return an alist containing all completions of PREFIX in DICT
+along with their associated data, sorted according to
+RANK-FUNCTION (defaulting to \"lexical\" order, i.e. the order
+defined by the dictionary's comparison function,
+cf. `dictree-create'). Return nil if no completions are found.
 
 PREFIX can also be a list of sequences, in which case completions of
 all elements in the list are returned, merged together in a
@@ -2061,7 +2061,7 @@ RANK-FUNCTION should return non-nil if first argument is ranked
 strictly higher than the second, nil otherwise.
 
 The optional integer argument MAXNUM limits the results to the
-first MAXNUM completions.
+first MAXNUM completions. The default is to return all matches.
 
 If the optional argument NO-CACHE is non-nil, it prevents caching
 of the result. Ignored for dictionaries that do not have
@@ -2118,12 +2118,12 @@ completion, and its associated data."
 (defun dictree-wildcard-search
   (dict pattern
 	&optional rank-function maxnum reverse no-cache filter strip-data)
-  "Return an alist containing all matches for PATTERN in TRIE
+  "Return an alist containing all matches for PATTERN in DICT
 along with their associated data, in the order defined by
 RANKFUN, defaulting to \"lexical\" order (i.e. the order defined
 by the trie's comparison function). If REVERSE is non-nil, the
-completions are sorted in the reverse order. If no completions
-are found, return nil.
+matches are sorted in the reverse order. Returns nil if no
+completions are found.
 
 PATTERN must be a sequence (vector, list or string) containing
 either elements of the type used to reference data in the trie,
@@ -2132,7 +2132,9 @@ meaning and syntax of these special characters follows shell-glob
 syntax:
 
   *  wildcard
-    Matches zero or more characters.
+    Matches zero or more characters. May *only* appear at the end
+    of the pattern if DICT is a meta-dictionary (or is a list
+    including a meta-dictionary).
 
   ?  wildcard
     Matches any single character.
@@ -2143,8 +2145,11 @@ syntax:
   [^...]  negated character alternative
     Matches any character *other* then those listed.
 
-  []..]  character alternative including `]'
+  []...]  character alternative including `]'
     Matches any of the listed characters, including `]'.
+
+  [^]...]  negated character alternative including `]'
+    Matches any character other than `]' and any others listed.
 
   \\  quote literal
     Causes the next element of the pattern sequence to be treated
@@ -2152,15 +2157,19 @@ syntax:
     anything else it has no effect.
 
 To include a `]' in a character alternative, place it immediately
-after the opening `['. To include a literal `\\', quote it with
-another `\\' (remember that `\\' also has to be quoted within
-elisp strings, so as a string this would be \"\\\\\\\\\"). The
-above syntax descriptions are written in terms of strings, but
-the special characters can be used in *any* sequence
-type. E.g. the character alternative \"[abc]\" would be \(?[ ?a
-?b ?c ?]\) as a list, or [?[ ?a ?b ?c ?]] as a vector. The
-\"characters\" in the alternative can of course be any data type
-that might be stored in the trie, not just actual characters.
+after the opening `[', or the opening `[^' in a negated character
+alternative. To include a `^' in a character alternative, negated
+or otherwise, place it anywhere other than immediately after the
+opening `['. To include a literal `\\' in the pattern, quote it
+with another `\\' (remember that `\\' also has to be quoted
+within elisp strings, so as a string this would be
+\"\\\\\\\\\"). The above syntax descriptions are written in terms
+of strings, but the special characters can be used in *any*
+sequence type. E.g. the character alternative \"[abc]\" would be
+\(?[ ?a ?b ?c ?]\) as a list, or [?[ ?a ?b ?c ?]] as a
+vector. The \"characters\" in the alternative can of course be
+any data type that might be stored in the trie, not just actual
+characters.
 
 If PATTERN is a string, it must be possible to apply `string' to
 individual elements of the sequences stored in the trie. The
@@ -2169,8 +2178,25 @@ as KEY. If PATTERN is a list of pattern sequences, matches for
 all patterns in the list are included in the returned alist. All
 sequences in the list must be of the same type.
 
+DICT can also be a list of dictionaries, in which case matches
+are sought in all dictionaries in the list. (Note that if the
+same key appears in multiple dictionaries, the alist may contain
+the same key multiple times, each copy associated with the data
+from a different dictionary. If you want to combine identical
+keys, use a meta-dictionary; see `dictree-meta-dict-create'.)
+
+If optional argument RANK-FUNCTION is any non-nil value that is
+not a function, the matches are sorted according to the
+dictionary's rank-function (see `dictree-create'). Any non-nil
+value that *is* a function over-rides this. In that case,
+RANK-FUNCTION should accept two arguments, both cons cells. The
+car of each contains a sequence from the dictionary (of the same
+type as PREFIX), the cdr contains its associated data. The
+RANK-FUNCTION should return non-nil if first argument is ranked
+strictly higher than the second, nil otherwise.
+
 The optional integer argument MAXNUM limits the results to the
-first MAXNUM matches. Otherwise, all matches are returned.
+first MAXNUM matches. The default is to return all matches.
 
 If specified, RANKFUN must accept two arguments, both cons
 cells. The car contains a sequence from the trie (of the same
@@ -2179,8 +2205,8 @@ return non-nil if first argument is ranked strictly higher than
 the second, nil otherwise.
 
 If the optional argument NO-CACHE is non-nil, it prevents caching
-of the result. Ignored for dictionaries that do not have
-completion caching enabled.
+of the result. Ignored for dictionaries that do not have wildcard
+caching enabled.
 
 The FILTER argument sets a filter function for the matches. If
 supplied, it is called for each possible match with two
@@ -2188,8 +2214,8 @@ arguments: the matching key, and its associated data. If the
 filter function returns nil, the match is not included in the
 results, and does not count towards MAXNUM.
 
-If STRIP-DATA is non-nil, a list of completions is
-returned (rather than an alist), without the data."
+If STRIP-DATA is non-nil, a list of matches is returned (rather
+than an alist), without the data."
   ;; run wildcard query
   (dictree--query
    dict pattern
