@@ -2224,7 +2224,7 @@ than an alist), without the data."
      'dictree--wildcard-cache)
    (if rank-function
        'dictree--wildcard-ranked-cache-threshold
-     'dictree--wildcard-cache-threshold dict)
+     'dictree--wildcard-cache-threshold)
    'trie-wildcard-search 'trie-wildcard-stack
    (when rank-function
      (if (functionp rank-function)
