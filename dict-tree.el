@@ -2465,7 +2465,9 @@ Interactively, FILE is read from the mini-buffer."
 
     ;; ensure the dictionary name and file name associated with the
     ;; dictionary match the file it was loaded from
-    (setf (dictree-filename dict) (expand-file-name file))
+    (when (and (string= (file-name-nondirectory file) file)
+	       (setq file (locate-file file load-path load-suffixes)))
+      (setf (dictree-filename dict) file))
     (setf (dictree-name dict) dictname)
 
     ;; make sure the dictionary is in dictree-loaded-list (normally the lisp
