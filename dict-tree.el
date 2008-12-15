@@ -1322,6 +1322,23 @@ TEST returns non-nil."
      ;; deleted and not in cached result: requires no action
      )))
 
+
+(defun dictree-clear-caches (dict)
+  "Clear all DICT's query caches."
+  (interactive (list (read-dict "Dictionary: ")))
+  (dolist (cachefun '(dictree-lookup-cache
+		      dictree-complete-cache
+		      dictree-complete-ranked-cache
+		      dictree-wildcard-cache
+		      dictree-wildcard-ranked-cache))
+    (when (funcall cachefun dict)
+      (clrhash (funcall cachefun dict))))
+  (when (interactive-p)
+    (message "Cleared caches for dictionary %s" (dictree-name dict))))
+
+
+
+
 ;; ----------------------------------------------------------------
 ;;                        Retrieving data
 
