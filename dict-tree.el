@@ -314,7 +314,7 @@ If START or END is negative, it counts from the end."
 
 (defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
   ;; return wrapped result function to deal with data wrapping
-  `(lambda (key data) (,resultfun key (dictree--cell-data data))))
+  `(lambda (res) (,resultfun (car res) (dictree--cell-data (cdr res)))))
 
 
 
@@ -1886,10 +1886,9 @@ Returns nil if the stack is empty."
 ;; ----------------------------------------------------------------
 ;;             Functions for building advanced queries
 
-(defun dictree--query (dict arg cachefun cacheparamfun triefun stackfun
-		       &optional
-		       rank-function maxnum reverse no-cache filter
-		       resultfun)
+(defun dictree--query
+  (dict arg cachefun cacheparamfun triefun stackfun
+   &optional rank-function maxnum reverse no-cache filter resultfun)
   ;; Return results of querying DICT's trie with argument ARG using TRIEFUN or
   ;; STACKFUN. If result of calling CACHEPARAMFUN on DICT is non-nil, look
   ;; first for cached result in cache returned by calling CACHEFUN on DICT,
@@ -1898,8 +1897,9 @@ Returns nil if the stack is empty."
   ;; only the first MAXNUM results will be returned. If REVERSE is non-nil,
   ;; results are in reverse order. A non-nil NO-CACHE prevents caching of
   ;; results, irrespective of DICT's cache settings. If supplied, only results
-  ;; that pass FILTER are included. A non-nil STRIP-DATA returns a list of
-  ;; keys. Otherwise, an alist of key-data associations is returned.
+  ;; that pass FILTER are included. A non-nil RESULTFUN is applied to results
+  ;; before adding them to final results list. Otherwise, an alist of key-data
+  ;; associations is returned.
 
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
@@ -1919,8 +1919,7 @@ Returns nil if the stack is empty."
 	(setq cmpl
 	      (dictree--do-query dic arg triefun stackfun
 				 rank-function maxnum reverse
-				 (when filter (dictree--wrap-filter filter))
-				 resultfun)))
+				 (when filter (dictree--wrap-filter filter)))))
 
 
        ;; if there's a cached result with enough completions, use it
@@ -1943,8 +1942,7 @@ Returns nil if the stack is empty."
 	(let (time)
 	  (setq time (float-time))
 	  (setq cmpl (dictree--do-query dic arg triefun stackfun
-					rank-function maxnum reverse
-					nil resultfun))
+					rank-function maxnum reverse nil))
 	  (setq time (- (float-time) time))
 	  ;; if we're above the dictionary's completion cache threshold, cache
 	  ;; the result
@@ -1956,8 +1954,8 @@ Returns nil if the stack is empty."
 			      (>= time cacheparam))
 			 (and (or (eq (dictree-cache-policy dic) 'length)
 				  (eq (dictree-cache-policy dic) 'both))
-			  ;; note: we cache completions of *shorter* keys,
-			  ;;       because those are likely to be slower
+			      ;; note: we cache completions of *shorter* keys,
+			      ;;       because those are likely to be slower
 			      (<= (length arg) cacheparam))))
 	    (setf (dictree-modified dic) t)
 	    (puthash (cons arg reverse) (dictree--cache-create cmpl maxnum)
@@ -1975,18 +1973,21 @@ Returns nil if the stack is empty."
 		   (car a) (car b))))
 	     nil maxnum)))
 
-    ;; return completions list
-    completions))
+    ;; return completions list, applying RESULTFUN is specified, otherwise
+    ;; just stripping meta-data
+    (mapcar
+     (if resultfun
+	 (dictree--wrap-resultfun resultfun)
+       (lambda (el) (cons (car el) (dictree--cell-data (cdr el)))))
+     completions)))
 
 
 
 (defun dictree--do-query
-  (dict arg triefun stackfun
-	&optional rank-function maxnum reverse filter resultfun)
+  (dict arg triefun stackfun &optional rank-function maxnum reverse filter)
   ;; Return first MAXNUM results of querying DICT with ARG using TRIEFUN or
   ;; STACKFUN that satisfy FILTER, ordered according to RANK-FUNCTION
-  ;; (defaulting to "lexical" order), and processed by calling RESULTFUn
-  ;; before adding them to the final list.
+  ;; (defaulting to "lexical" order).
 
   ;; for a meta-dict, use a dictree-stack
   (if (dictree--meta-dict-p dict)
@@ -2003,12 +2004,6 @@ Returns nil if the stack is empty."
 		    (setq cmpl (dictree-stack-pop stack)))
 	  ;; check completion passes FILTER
 	  (when (or (null filter) (funcall filter cmpl))
-	    ;; process result with RESULTFUN, if specified, otherwise just
-	    ;; strip meta-data
-	    (if resultfun
-		(setq cmpl (funcall resultfun (car cmpl)
-				    (dictree--cell-data (cdr cmpl))))
-	      (setq cmpl (cons (car cmpl) (dictree--cell-data (cdr cmpl)))))
 	    (if rank-function
 		(heap-add heap cmpl)   ; for ranked query, add to heap
 	      (push cmpl completions)) ; for lexical query, add to list
@@ -2031,8 +2026,7 @@ Returns nil if the stack is empty."
     (funcall triefun
 	     (dictree--trie dict) arg
 	     (when rank-function (dictree--wrap-rankfun rank-function))
-	     maxnum reverse filter
-	     (dictree--wrap-resultfun resultfun))))
+	     maxnum reverse filter)))
 
 
 
