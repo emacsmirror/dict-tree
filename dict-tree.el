@@ -824,7 +824,9 @@ dictionaries. It is passed two pieces of data, each an
 association of the same key, but in different dictionaries. It
 should return a combined data.
 
-The other arguments are as for `dictree-create'."
+The other arguments are as for `dictree-create'. Note that
+caching is only possible if NAME is supplied, otherwise the
+cache-threshold arguments are ignored."
 
   ;; sadly, passing null values over-rides the defaults in the defstruct
   ;; `dictree--create', so we have to explicitly set the defaults again here
@@ -840,11 +842,11 @@ The other arguments are as for `dictree-create'."
 	  autosave unlisted
 	  combine-function
 	  cache-policy cache-update-policy
-	  lookup-cache-threshold
-	  complete-cache-threshold
-	  complete-ranked-cache-threshold
-	  wildcard-cache-threshold
-	  wildcard-ranked-cache-threshold)
+	  (when name lookup-cache-threshold)
+	  (when name complete-cache-threshold)
+	  (when name complete-ranked-cache-threshold)
+	  (when name wildcard-cache-threshold)
+	  (when name wildcard-ranked-cache-threshold))
 	 ))
     ;; store dictionary in variable NAME
     (when name (set name dict))
