@@ -852,12 +852,18 @@ The other arguments are as for `dictree-create'."
     (unless (or (null name) unlisted)
       (push dict dictree-loaded-list))
     ;; update meta-dict-list cells of constituent dictionaries
-    (mapc
-     (lambda (dic)
-       (if (symbolp dic) (setq dic (eval dic)))
-       (setf (dictree--meta-dict-list dic)
-	     (cons dict (dictree--meta-dict-list dic))))
-     dictionary-list)
+    (unless (or (null name)
+		(not (or lookup-cache-threshold
+			 complete-cache-threshold
+			 complete-ranked-cache-threshold
+			 wildcard-cache-threshold
+			 wildcard-ranked-cache-threshold)))
+      (mapc
+       (lambda (dic)
+	 (if (symbolp dic) (setq dic (eval dic)))
+	 (setf (dictree--meta-dict-list dic)
+	       (cons dict (dictree--meta-dict-list dic))))
+       dictionary-list))
     dict))
 
 
