@@ -2444,45 +2444,50 @@ Interactively, FORCE is the prefix argument."
 
 (defun dictree-load (file)
   "Load a dictionary object from file FILE.
-Returns t if successful, nil otherwise.
+Returns the dictionary if successful, nil otherwise.
 
 Interactively, FILE is read from the mini-buffer."
   (interactive (list (completing-read
 		      "Load dictionary: "
 		      (apply-partially 'locate-file-completion-table
-				       load-path
-				       (get-load-suffixes)))))
+				       load-path (get-load-suffixes)))))
 
   ;; sort out dictionary name and file name
   (let (dictname dict)
-    (cond
-     ((and (> (length file) 4)
-	   (string= (substring file -4) ".elc"))
-      (setq dictname (file-name-nondirectory (substring file 0 -4))))
-     ((and (> (length file) 3)
-	   (string= (substring file -3) ".el"))
-      (setq dictname (file-name-nondirectory (substring file 0 -3))))
-     (t (setq dictname (file-name-nondirectory file))))
+    (setq dictname (file-name-nondirectory (file-name-sans-extension file)))
 
     ;; load the dictionary
-    (unless (load file t)
-      (error "Cannot open dictionary file: %s" file))
-    (setq dict (eval (intern-soft dictname)))
-    (when (not (dictree-p dict))
-      (error "Error loading dictionary file: %s" file))
+    (if (not (load file t))
+	;; if loading failed, throw error interactively, return nil
+	;; non-interactively
+	(if (interactive-p)
+	    (error "Cannot open dictionary file: %s" file)
+	  nil)
 
-    ;; ensure the dictionary name and file name associated with the
-    ;; dictionary match the file it was loaded from
-    (when (and (string= (file-name-nondirectory file) file)
-	       (setq file (locate-file file load-path load-suffixes)))
-      (setf (dictree-filename dict) file))
-    (setf (dictree-name dict) dictname)
+      (setq dict (eval (intern-soft dictname)))
+      (if (not (dictree-p dict))
+	  ;; if loading failed, throw error interactively, return nil
+	  ;; non-interactively
+	  (if (interactive-p)
+	      (error "Error loading dictionary file: %s" file)
+	    nil)
 
-    ;; make sure the dictionary is in dictree-loaded-list (normally the lisp
-    ;; code in the dictionary itself should do this, but just to make sure...)
-    (unless (memq dict dictree-loaded-list)
-      (push dict dictree-loaded-list))
-    (message (format "Loaded dictionary %s" dictname))))
+	;; ensure the dictionary name and file name associated with the
+	;; dictionary match the file it was loaded from
+	(when (and (string= (file-name-nondirectory file) file)
+		   (setq file (locate-file file load-path load-suffixes)))
+	  (setf (dictree-filename dict) file))
+	(setf (dictree-name dict) dictname)
+
+	;; make sure the dictionary is in dictree-loaded-list (normally the
+	;; lisp code in the dictionary itself should do this, but just to make
+	;; sure...)
+	(unless (memq dict dictree-loaded-list)
+	  (push dict dictree-loaded-list))
+	(message (format "Loaded dictionary %s" dictname))
+
+	;; return dictionary
+	dict))))
 
 
 
@@ -3118,23 +3123,59 @@ OVERWRITE is the prefix argument, and TYPE is always 'string."
 ;;                     Minibuffer completion
 
 (defvar dictree-history nil
-  "History list for commands that read an existing ditionary name.")
+  "History list for commands that read a dictionary name.")
+
+(defvar dictree-loaded-history nil
+  "History list for commands that read the name of a loaded dictionary.")
 
 
-(defun read-dict (prompt &optional default dictlist)
+(defun read-dict (prompt &optional default dictlist allow-unloaded)
   "Read the name of a dictionary with completion, and return it.
 
 Prompt with PROMPT. By default, return DEFAULT. If DICTLIST is
-supplied, only complete on dictionaries in that list."
-  (let (dictnames)
+supplied, only complete on dictionaries in that list.
+
+If ALLOW-UNLOADED is non-nil, also complete on the names of
+unloaded dictionaries (actually, on any Elisp file in the current
+`load-path' restricted to subdirectories of your home
+directory). If an unloaded dictionary is read, the name of the
+Elisp file will be returned, without extension, suitable for
+passing to `load-library'."
+  (let (dictname paths)
+    ;; when allowing unloaded dictionaries...
+    (when allow-unloaded
+      ;; get paths in load-path that are subdirectories of home directory
+      (dolist (d load-path)
+	(when (eq (aref d 0) ?~) (push d paths)))
+      ;; gather names of all Elisp libraries in this restricted load-path
+      (dolist (f (all-completions
+		  "" (apply-partially 'locate-file-completion-table
+				      paths (get-load-suffixes))))
+	(when (and (null (file-name-directory f))
+		   (or (string= (file-name-extension f) "el")
+		       (string= (file-name-extension f) "elc"))
+		   (not (member (file-name-sans-extension f) dictname)))
+	  (push (file-name-sans-extension f) dictname))))
+    ;; gather names of loaded dictionaries
     (mapc (lambda (dict)
 	    (unless (or (null (dictree-name dict))
-			(member (dictree-name dict) dictnames))
-	      (push (list (dictree-name dict)) dictnames)))
+			(member (dictree-name dict) dictname))
+	      (push (list (dictree-name dict)) dictname)))
 	  (or dictlist dictree-loaded-list))
-    (eval (intern-soft
-	   (completing-read prompt dictnames nil t nil
-			    'dictree-history default)))))
+    ;; do completing-read
+    (setq dictname (completing-read prompt dictname nil t nil
+				    (if allow-unloaded
+					'dictree-history
+				      'dictree-loaded-history)
+				    default))
+    ;; return dictionary
+    (if allow-unloaded
+	(or (and (condition-case nil
+		     (dictree-p (eval (intern-soft dictname)))
+		   (void-variable nil))
+		 (eval (intern-soft dictname)))
+	    dictname)
+      (eval (intern-soft dictname)))))
 
 
 
