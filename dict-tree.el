@@ -172,6 +172,7 @@
 
 (eval-when-compile (require 'cl))
 (require 'trie)
+(require 'tNFA)
 (require 'bytecomp)
 
 
