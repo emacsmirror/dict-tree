@@ -341,8 +341,8 @@ If START or END is negative, it counts from the end."
 		  lookup-cache-threshold
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
-		  wildcard-cache-threshold
-		  wildcard-ranked-cache-threshold
+		  regexp-cache-threshold
+		  regexp-ranked-cache-threshold
 		  key-savefun key-loadfun
 		  data-savefun data-loadfun
 		  plist-savefun plist-loadfun
@@ -364,12 +364,12 @@ If START or END is negative, it counts from the end."
 		   (if complete-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (wildcard-cache
-		   (if wildcard-cache-threshold
+		  (regexp-cache
+		   (if regexp-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (wildcard-ranked-cache
-		   (if wildcard-ranked-cache-threshold
+		  (regexp-ranked-cache
+		   (if regexp-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
 		  (metadict-list nil)
@@ -390,8 +390,8 @@ If START or END is negative, it counts from the end."
 		  lookup-cache-threshold
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
-		  wildcard-cache-threshold
-		  wildcard-ranked-cache-threshold
+		  regexp-cache-threshold
+		  regexp-ranked-cache-threshold
 		  key-savefun key-loadfun
 		  data-savefun data-loadfun
 		  plist-savefun plist-loadfun
@@ -428,12 +428,12 @@ If START or END is negative, it counts from the end."
 		   (if complete-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (wildcard-cache
-		   (if wildcard-cache-threshold
+		  (regexp-cache
+		   (if regexp-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (wildcard-ranked-cache
-		   (if wildcard-ranked-cache-threshold
+		  (regexp-ranked-cache
+		   (if regexp-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
 		  (metadict-list nil)
@@ -445,8 +445,8 @@ If START or END is negative, it counts from the end."
   lookup-cache lookup-cache-threshold
   complete-cache complete-cache-threshold
   complete-ranked-cache complete-ranked-cache-threshold
-  wildcard-cache wildcard-cache-threshold
-  wildcard-ranked-cache wildcard-ranked-cache-threshold
+  regexp-cache regexp-cache-threshold
+  regexp-ranked-cache regexp-ranked-cache-threshold
   key-savefun key-loadfun
   data-savefun data-loadfun
   plist-savefun plist-loadfun
@@ -471,8 +471,8 @@ If START or END is negative, it counts from the end."
 		  lookup-cache-threshold
 		  complete-cache-threshold
 		  complete-ranked-cache-threshold
-		  wildcard-cache-threshold
-		  wildcard-ranked-cache-threshold
+		  regexp-cache-threshold
+		  regexp-ranked-cache-threshold
 		  &aux
 		  (dictlist
 		   (mapcar
@@ -495,12 +495,12 @@ If START or END is negative, it counts from the end."
 		   (if complete-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (wildcard-cache
-		   (if wildcard-cache-threshold
+		  (regexp-cache
+		   (if regexp-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (wildcard-ranked-cache
-		   (if wildcard-ranked-cache-threshold
+		  (regexp-ranked-cache
+		   (if regexp-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
 		  ))
@@ -511,8 +511,8 @@ If START or END is negative, it counts from the end."
   lookup-cache lookup-cache-threshold
   complete-cache complete-cache-threshold
   complete-ranked-cache complete-ranked-cache-threshold
-  wildcard-cache wildcard-cache-threshold
-  wildcard-ranked-cache wildcard-ranked-cache-threshold
+  regexp-cache regexp-cache-threshold
+  regexp-ranked-cache regexp-ranked-cache-threshold
   dictlist meta-dict-list)
 
 
@@ -605,8 +605,8 @@ If START or END is negative, it counts from the end."
    lookup-cache-threshold
    complete-cache-threshold
    complete-ranked-cache-threshold
-   wildcard-cache-threshold
-   wildcard-ranked-cache-threshold
+   regexp-cache-threshold
+   regexp-ranked-cache-threshold
    key-savefun key-loadfun
    data-savefun data-loadfun
    plist-savefun plist-loadfun
@@ -722,8 +722,8 @@ structure. See `trie-create' for details."
 	  lookup-cache-threshold
 	  complete-cache-threshold
 	  complete-ranked-cache-threshold
-	  wildcard-cache-threshold
-	  wildcard-ranked-cache-threshold
+	  regexp-cache-threshold
+	  regexp-ranked-cache-threshold
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -746,8 +746,8 @@ structure. See `trie-create' for details."
      lookup-cache-threshold
      complete-cache-threshold
      complete-ranked-cache-threshold
-     wildcard-cache-threshold
-     wildcard-ranked-cache-threshold
+     regexp-cache-threshold
+     regexp-ranked-cache-threshold
      key-savefun key-loadfun
      data-savefun data-loadfun
      plist-savefun plist-loadfun
@@ -780,8 +780,8 @@ underlying data structure. See `trie-create' for details."
 	  lookup-cache-threshold
 	  complete-cache-threshold
 	  complete-ranked-cache-threshold
-	  wildcard-cache-threshold
-	  wildcard-ranked-cache-threshold
+	  regexp-cache-threshold
+	  regexp-ranked-cache-threshold
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -814,8 +814,8 @@ underlying data structure. See `trie-create' for details."
    lookup-cache-threshold
    complete-cache-threshold
    complete-ranked-cache-threshold
-   wildcard-cache-threshold
-   wildcard-ranked-cache-threshold)
+   regexp-cache-threshold
+   regexp-ranked-cache-threshold)
   "Create a meta-dictionary based on the list of dictionaries
 in DICTIONARY-LIST.
 
@@ -845,8 +845,8 @@ cache-threshold arguments are ignored."
 	  (when name lookup-cache-threshold)
 	  (when name complete-cache-threshold)
 	  (when name complete-ranked-cache-threshold)
-	  (when name wildcard-cache-threshold)
-	  (when name wildcard-ranked-cache-threshold))
+	  (when name regexp-cache-threshold)
+	  (when name regexp-ranked-cache-threshold))
 	 ))
     ;; store dictionary in variable NAME
     (when name (set name dict))
@@ -858,8 +858,8 @@ cache-threshold arguments are ignored."
 		(not (or lookup-cache-threshold
 			 complete-cache-threshold
 			 complete-ranked-cache-threshold
-			 wildcard-cache-threshold
-			 wildcard-ranked-cache-threshold)))
+			 regexp-cache-threshold
+			 regexp-ranked-cache-threshold)))
       (mapc
        (lambda (dic)
 	 (if (symbolp dic) (setq dic (eval dic)))
@@ -1030,41 +1030,41 @@ cache-threshold arguments are ignored."
       (dictree--meta-dict-complete-ranked-cache dict)
     (dictree--complete-ranked-cache dict)))
 
-(defsubst dictree-wildcard-cache-threshold (dict)
-  "Return the wildcard cache threshold for dictionary DICT."
+(defsubst dictree-regexp-cache-threshold (dict)
+  "Return the regexp cache threshold for dictionary DICT."
   (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-wildcard-cache-threshold dict)
-    (dictree--wildcard-cache-threshold dict)))
+      (dictree--meta-dict-regexp-cache-threshold dict)
+    (dictree--regexp-cache-threshold dict)))
 
-(defsetf dictree-wildcard-cache-threshold (dict) (param)
-  ;; setf method for wildcard cache threshold
+(defsetf dictree-regexp-cache-threshold (dict) (param)
+  ;; setf method for regexp cache threshold
   `(if (dictree--meta-dict-p ,dict)
-       (setf (dictree--meta-dict-wildcard-cache-threshold ,dict) ,param)
-     (setf (dictree--wildcard-cache-threshold ,dict) ,param)))
+       (setf (dictree--meta-dict-regexp-cache-threshold ,dict) ,param)
+     (setf (dictree--regexp-cache-threshold ,dict) ,param)))
 
-(defun dictree-wildcard-cache (dict)
-  ;; Return the wildcard cache for dictionary DICT.
+(defun dictree-regexp-cache (dict)
+  ;; Return the regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-wildcard-cache dict)
-    (dictree--wildcard-cache dict)))
+      (dictree--meta-dict-regexp-cache dict)
+    (dictree--regexp-cache dict)))
 
-(defsubst dictree-wildcard-ranked-cache-threshold (dict)
-  "Return the ranked wildcard cache threshold for dictionary DICT."
+(defsubst dictree-regexp-ranked-cache-threshold (dict)
+  "Return the ranked regexp cache threshold for dictionary DICT."
   (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-wildcard-ranked-cache-threshold dict)
-    (dictree--wildcard-ranked-cache-threshold dict)))
+      (dictree--meta-dict-regexp-ranked-cache-threshold dict)
+    (dictree--regexp-ranked-cache-threshold dict)))
 
-(defsetf dictree-wildcard-ranked-cache-threshold (dict) (param)
-  ;; setf method for ranked wildcard cache threshold
+(defsetf dictree-regexp-ranked-cache-threshold (dict) (param)
+  ;; setf method for ranked regexp cache threshold
   `(if (dictree--meta-dict-p ,dict)
-       (setf (dictree--meta-dict-wildcard-ranked-cache-threshold ,dict) ,param)
-     (setf (dictree--wildcard-ranked-cache-threshold ,dict) ,param)))
+       (setf (dictree--meta-dict-regexp-ranked-cache-threshold ,dict) ,param)
+     (setf (dictree--regexp-ranked-cache-threshold ,dict) ,param)))
 
-(defun dictree-wildcard-ranked-cache (dict)
-  ;; Return the ranked wildcard cache for dictionary DICT.
+(defun dictree-regexp-ranked-cache (dict)
+  ;; Return the ranked regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-wildcard-ranked-cache dict)
-    (dictree--wildcard-ranked-cache dict)))
+      (dictree--meta-dict-regexp-ranked-cache dict)
+    (dictree--regexp-ranked-cache dict)))
 
 
 
@@ -1212,15 +1212,15 @@ TEST returns non-nil."
 	     ;; if deleting dirty cache entries...
 	     (t (remhash (cons arg reverse) cache)))))))
 
-    ;; synchronize the wildcard cache, if it exists
-    (when (dictree-wildcard-cache-threshold dict)
-      (setq cache (dictree--wildcard-cache dict))
+    ;; synchronize the regexp cache, if it exists
+    (when (dictree-regexp-cache-threshold dict)
+      (setq cache (dictree--regexp-cache dict))
       ;; have to check every cache entry to see if it matches
       (maphash
        (lambda (cache-key cache-entry)
 	 (setq arg (car cache-key))
-	 (when (trie-wildcard-match arg key
-				    (dictree--comparison-function dict))
+	 (when (tNFA-regexp-match
+		arg key :test (dictree--comparison-function dict))
 	   (setq reverse (cdr cache-key))
 	   (cond
 	    ;; if updating dirty cache entries...
@@ -1230,17 +1230,17 @@ TEST returns non-nil."
 						      key newdata deleted))
 	    ;; if deleting dirty cache entries...
 	    (t (remhash (cons arg reverse) cache)))))
-       (dictree--wildcard-cache dict)))
+       (dictree--regexp-cache dict)))
 
-    ;; synchronize the ranked wildcard cache, if it exists
-    (when (dictree--wildcard-ranked-cache-threshold dict)
-      (setq cache (dictree--wildcard-ranked-cache dict))
+    ;; synchronize the ranked regexp cache, if it exists
+    (when (dictree--regexp-ranked-cache-threshold dict)
+      (setq cache (dictree--regexp-ranked-cache dict))
       ;; have to check every cache entry to see if it matches
       (maphash
        (lambda (cache-key cache-entry)
 	 (setq arg (car cache-key))
-	 (when (trie-wildcard-match arg key
-				    (dictree--comparison-function dict))
+	 (when (tNFA-regexp-match
+		arg key :test (dictree--comparison-function dict))
 	   (setq reverse (cdr cache-key))
 	   (cond
 	    ;; if updating dirty cache entries...
@@ -1250,7 +1250,7 @@ TEST returns non-nil."
 						      key newdata deleted))
 	    ;; if deleting dirty cache entries...
 	    (t (remhash (cons arg reverse) cache)))))
-       (dictree--wildcard-ranked-cache dict)))
+       (dictree--regexp-ranked-cache dict)))
     ))
 
 
@@ -1337,8 +1337,8 @@ TEST returns non-nil."
   (dolist (cachefun '(dictree-lookup-cache
 		      dictree-complete-cache
 		      dictree-complete-ranked-cache
-		      dictree-wildcard-cache
-		      dictree-wildcard-ranked-cache))
+		      dictree-regexp-cache
+		      dictree-regexp-ranked-cache))
     (when (funcall cachefun dict)
       (clrhash (funcall cachefun dict))))
   (when (interactive-p)
@@ -2143,69 +2143,17 @@ completion, and its associated data."
 
 
 ;; ----------------------------------------------------------------
-;;                      Wildcard search
+;;                      Regexp search
 
-(defun dictree-wildcard-search
-  (dict pattern
+(defun dictree-regexp-search
+  (dict regexp
 	&optional rank-function maxnum reverse no-cache filter resultfun)
-  "Return an alist containing all matches for PATTERN in DICT
+  "Return an alist containing all matches for REGEXP in TRIE
 along with their associated data, in the order defined by
-RANKFUN, defaulting to \"lexical\" order (i.e. the order defined
-by the trie's comparison function). If REVERSE is non-nil, the
-matches are sorted in the reverse order. Returns nil if no
+RANKFUN, defauling to \"lexical\" order (i.e. the order defined
+by the trie's comparison function).  If REVERSE is non-nil, the
+completions are sorted in the reverse order. Returns nil if no
 completions are found.
-
-PATTERN must be a sequence (vector, list or string) containing
-either elements of the type used to reference data in the trie,
-or any the characters `*', `?', `[', `]', `^' or `\\'. The
-meaning and syntax of these special characters follows shell-glob
-syntax:
-
-  *  wildcard
-    Matches zero or more characters. May *only* appear at the end
-    of the pattern.
-
-  ?  wildcard
-    Matches any single character.
-
-  [...]  character alternative
-    Matches any of the listed characters.
-
-  [^...]  negated character alternative
-    Matches any character *other* then those listed.
-
-  []...]  character alternative including `]'
-    Matches any of the listed characters, including `]'.
-
-  [^]...]  negated character alternative including `]'
-    Matches any character other than `]' and any others listed.
-
-  \\  quote literal
-    Causes the next element of the pattern sequence to be treated
-    literally; special characters lose their special meaning, for
-    anything else it has no effect.
-
-To include a `]' in a character alternative, place it immediately
-after the opening `[', or the opening `[^' in a negated character
-alternative. To include a `^' in a character alternative, negated
-or otherwise, place it anywhere other than immediately after the
-opening `['. To include a literal `\\' in the pattern, quote it
-with another `\\' (remember that `\\' also has to be quoted
-within elisp strings, so as a string this would be
-\"\\\\\\\\\"). The above syntax descriptions are written in terms
-of strings, but the special characters can be used in *any*
-sequence type. E.g. the character alternative \"[abc]\" would be
-\(?[ ?a ?b ?c ?]\) as a list, or [?[ ?a ?b ?c ?]] as a
-vector. The \"characters\" in the alternative can of course be
-any data type that might be stored in the trie, not just actual
-characters.
-
-If PATTERN is a string, it must be possible to apply `string' to
-individual elements of the sequences stored in the trie. The
-matches returned in the alist will be sequences of the same type
-as KEY. If PATTERN is a list of pattern sequences, matches for
-all patterns in the list are included in the returned alist. All
-sequences in the list must be of the same type.
 
 DICT can also be a list of dictionaries, in which case matches
 are sought in all dictionaries in the list. (Note that if the
@@ -2213,6 +2161,27 @@ same key appears in multiple dictionaries, the alist may contain
 the same key multiple times, each copy associated with the data
 from a different dictionary. If you want to combine identical
 keys, use a meta-dictionary; see `dictree-meta-dict-create'.)
+
+REGEXP is a regular expression, but it need not necessarily be a
+string. It must be a sequence (vector, list of string) whose
+elements are either elements of the same type as elements of the
+trie keys (which behave as literals in the regexp), or any of the
+usual regexp special characters and backslash constructs. If
+REGEXP is a string, it must be possible to apply `string' to
+individual elements of the keys stored in the trie. The matches
+returned in the alist will be sequences of the same type as KEY.
+
+Back-references and non-greedy postfix operators are *not*
+supported, and the matches are always anchored, so `$' and `^'
+lose their special meanings.
+
+If the regexp contains any non-shy grouping constructs, subgroup
+match data is included in the results. In this case, the car of
+each match (as returned by a call to `trie-stack-pop' is no
+longer just a key. Instead, it is a list whose first element is
+the matching key, and whose remaining elements are cons cells
+whose cars and cdrs give the start and end indices of the
+elements that matched the corresponding groups, in order.
 
 If optional argument RANK-FUNCTION is any non-nil value that is
 not a function, the matches are sorted according to the
@@ -2226,12 +2195,6 @@ strictly higher than the second, nil otherwise.
 
 The optional integer argument MAXNUM limits the results to the
 first MAXNUM matches. The default is to return all matches.
-
-If specified, RANKFUN must accept two arguments, both cons
-cells. The car contains a sequence from the trie (of the same
-type as PREFIX), the cdr contains its associated data. It should
-return non-nil if first argument is ranked strictly higher than
-the second, nil otherwise.
 
 If the optional argument NO-CACHE is non-nil, it prevents caching
 of the result. Ignored for dictionaries that do not have wildcard
@@ -2248,16 +2211,16 @@ adding them to the final result list. If specified, t should
 accept two arguments: a key and its associated data. It's return
 value is what gets added to the final result list, instead of the
 default key-data cons cell."
-  ;; run wildcard query
+  ;; run regexp query
   (dictree--query
-   dict pattern
+   dict regexp
    (if rank-function
-       'dictree--wildcard-ranked-cache
-     'dictree--wildcard-cache)
+       'dictree--regexp-ranked-cache
+     'dictree--regexp-cache)
    (if rank-function
-       'dictree--wildcard-ranked-cache-threshold
-     'dictree--wildcard-cache-threshold)
-   'trie-wildcard-search 'trie-wildcard-stack
+       'dictree--regexp-ranked-cache-threshold
+     'dictree--regexp-cache-threshold)
+   'trie-regexp-search 'trie-regexp-stack
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
@@ -2447,10 +2410,7 @@ Interactively, FORCE is the prefix argument."
 Returns the dictionary if successful, nil otherwise.
 
 Interactively, FILE is read from the mini-buffer."
-  (interactive (list (completing-read
-		      "Load dictionary: "
-		      (apply-partially 'locate-file-completion-table
-				       load-path (get-load-suffixes)))))
+  (interactive (list (read-dict "Load dictionary: " nil nil t)))
 
   ;; sort out dictionary name and file name
   (let (dictname dict)
@@ -2534,7 +2494,7 @@ is the prefix argument."
   ;; name DICTNAME and file FILENAME.
   (let (hashcode tmpdict tmptrie lookup-alist
 	complete-alist complete-ranked-alist
-	wildcard-alist wildcard-ranked-alist)
+	regexp-alist regexp-ranked-alist)
 
     ;; --- convert trie data ---
     ;; if dictionary doesn't use any custom save functions, write dictionary's
@@ -2626,10 +2586,10 @@ is the prefix argument."
 		complete-alist dictree--complete-cache)
 	       (dictree--complete-ranked-cache-threshold
 		complete-ranked-alist dictree--complete-ranked-cache)
-	       (dictree--wildcard-cache-threshold
-		wildcard-alist dictree--wildcard-cache)
-	       (dictree--wildcard-ranked-cache-threshold
-		wildcard-ranked-alist dictree--wildcard-ranked-cache)))
+	       (dictree--regexp-cache-threshold
+		regexp-alist dictree--regexp-cache)
+	       (dictree--regexp-ranked-cache-threshold
+		regexp-ranked-alist dictree--regexp-ranked-cache)))
       (when (funcall (nth 0 cache-details) dict)
 	;; convert hash table to alist
 	(set (nth 1 cache-details)
@@ -2702,14 +2662,14 @@ is the prefix argument."
 	    complete-ranked-alist
 	  (dictree--complete-ranked-cache-threshold tmpdict)
 	    (dictree--complete-ranked-cache-threshold dict)
-	  (dictree--wildcard-cache tmpdict)
-	    wildcard-alist
-	  (dictree--wildcard-cache-threshold tmpdict)
-	    (dictree--wildcard-cache-threshold dict)
-	  (dictree--wildcard-ranked-cache tmpdict)
-	    wildcard-ranked-alist
-	  (dictree--wildcard-ranked-cache-threshold tmpdict)
-	    (dictree--wildcard-ranked-cache-threshold dict)
+	  (dictree--regexp-cache tmpdict)
+	    regexp-alist
+	  (dictree--regexp-cache-threshold tmpdict)
+	    (dictree--regexp-cache-threshold dict)
+	  (dictree--regexp-ranked-cache tmpdict)
+	    regexp-ranked-alist
+	  (dictree--regexp-ranked-cache-threshold tmpdict)
+	    (dictree--regexp-ranked-cache-threshold dict)
 	  (dictree--key-savefun tmpdict)
 	    (dictree--key-savefun dict)
 	  (dictree--key-loadfun tmpdict)
@@ -2759,7 +2719,7 @@ is the prefix argument."
   ;; DICTNAME and file FILENAME.
   (let (hashcode tmpdict lookup-alist
 	complete-alist complete-ranked-alist
-	wildcard-alist wildcard-ranked-alist)
+	regexp-alist regexp-ranked-alist)
 
     ;; --- convert caches for writing to file ---
     ;; convert lookup cache hash table to an alist, if it exists
@@ -2786,12 +2746,12 @@ is the prefix argument."
 	       (dictree--meta-dict-complete-ranked-cache-threshold
 		complete-ranked-alist
 		dictree--meta-dict-complete-ranked-cache)
-	       (dictree--meta-dict-wildcard-cache-threshold
-		wildcard-alist
-		dictree--meta-dict-wildcard-cache)
-	       (dictree--meta-dict-wildcard-ranked-cache-threshold
-		wildcard-ranked-alist
-		dictree--meta-dict-wildcard-ranked-cache)))
+	       (dictree--meta-dict-regexp-cache-threshold
+		regexp-alist
+		dictree--meta-dict-regexp-cache)
+	       (dictree--meta-dict-regexp-ranked-cache-threshold
+		regexp-ranked-alist
+		dictree--meta-dict-regexp-ranked-cache)))
       (when (funcall (nth 0 cache-details) dict)
 	;; convert hash table to alist
 	(set (nth 1 cache-details)
