@@ -2411,11 +2411,11 @@ Interactively, FORCE is the prefix argument."
 Returns the dictionary if successful, nil otherwise.
 
 Interactively, FILE is read from the mini-buffer."
-  (interactive (list (read-dict "Load dictionary: " nil nil t)))
+  (interactive (list (read-dict "Load dictionary: " nil nil t t)))
 
   ;; sort out dictionary name and file name
-  (let (dictname dict)
-    (setq dictname (file-name-nondirectory (file-name-sans-extension file)))
+  (if (dictree-p file)
+      (message "Dictionary %s already loaded" (dictree-name file))
 
     ;; load the dictionary
     (if (not (load file t))
@@ -2425,30 +2425,32 @@ Interactively, FILE is read from the mini-buffer."
 	    (error "Cannot open dictionary file: %s" file)
 	  nil)
 
-      (setq dict (eval (intern-soft dictname)))
-      (if (not (dictree-p dict))
-	  ;; if loading failed, throw error interactively, return nil
-	  ;; non-interactively
-	  (if (interactive-p)
-	      (error "Error loading dictionary file: %s" file)
-	    nil)
+      (let (dictname dict)
+	(setq dictname (file-name-nondirectory (file-name-sans-extension file))
+	      dict     (eval (intern-soft dictname)))
+	(if (not (dictree-p dict))
+	    ;; if loading failed, throw error interactively, return nil
+	    ;; non-interactively
+	    (if (interactive-p)
+		(error "Error loading dictionary file: %s" file)
+	      nil)
 
-	;; ensure the dictionary name and file name associated with the
-	;; dictionary match the file it was loaded from
-	(when (and (string= (file-name-nondirectory file) file)
-		   (setq file (locate-file file load-path load-suffixes)))
-	  (setf (dictree-filename dict) file))
-	(setf (dictree-name dict) dictname)
+	  ;; ensure the dictionary name and file name associated with the
+	  ;; dictionary match the file it was loaded from
+	  (when (and (string= (file-name-nondirectory file) file)
+		     (setq file (locate-file file load-path load-suffixes)))
+	    (setf (dictree-filename dict) file))
+	  (setf (dictree-name dict) dictname)
 
-	;; make sure the dictionary is in dictree-loaded-list (normally the
-	;; lisp code in the dictionary itself should do this, but just to make
-	;; sure...)
-	(unless (memq dict dictree-loaded-list)
-	  (push dict dictree-loaded-list))
-	(message (format "Loaded dictionary %s" dictname))
+	  ;; make sure the dictionary is in dictree-loaded-list (normally the
+	  ;; lisp code in the dictionary itself should do this, but just to make
+	  ;; sure...)
+	  (unless (memq dict dictree-loaded-list)
+	    (push dict dictree-loaded-list))
+	  (message (format "Loaded dictionary %s" dictname))
 
-	;; return dictionary
-	dict))))
+	  ;; return dictionary
+	  dict)))))
 
 
 
@@ -2618,7 +2620,9 @@ is the prefix argument."
 	  "      (dictree--cache-create\n"
 	  "       (mapcar\n"
 	  "        (lambda (key)\n"
-	  "          (cons key (trie-member trie key)))\n"
+	  "          (cons key\n"
+	  "                (trie-member\n"
+	  "                 trie (if (stringp key) key (car key)))))\n"
 	  "        (dictree--cache-results (cdr entry)))\n"
 	  "       (dictree--cache-maxnum (cdr entry)))\n"
 	  "      cache))\n"
@@ -2826,13 +2830,9 @@ is the prefix argument."
 ;; ----------------------------------------------------------------
 ;;                Dumping and restoring contents
 
-(defun dictree-populate-from-file (dict file
-				   &optional
-				   insert-function
-				   key-loadfun
-				   data-loadfun
-				   plist-loadfun
-				   balance)
+(defun dictree-populate-from-file
+  (dict file &optional insert-function key-loadfun data-loadfun plist-loadfun
+	balance)
   "Populate dictionary DICT from the key list in file FILE.
 
 Each line of FILE should contain a key, either a string
@@ -2949,8 +2949,8 @@ are created when using a trie that is not self-balancing, see
 
 
 
-(defun dictree--read-line (dict &optional
-				key-loadfun data-loadfun plist-loadfun)
+(defun dictree--read-line
+  (dict &optional key-loadfun data-loadfun plist-loadfun)
   ;; Return a list containing the key, data (if any, otherwise nil) and
   ;; property list (ditto) at the current line of the current buffer, for
   ;; dictionary DICT.
@@ -3090,7 +3090,8 @@ OVERWRITE is the prefix argument, and TYPE is always 'string."
   "History list for commands that read the name of a loaded dictionary.")
 
 
-(defun read-dict (prompt &optional default dictlist allow-unloaded)
+(defun read-dict
+  (prompt &optional default dictlist allow-unloaded allow-unmatched)
   "Read the name of a dictionary with completion, and return it.
 
 Prompt with PROMPT. By default, return DEFAULT. If DICTLIST is
@@ -3102,6 +3103,7 @@ unloaded dictionaries (actually, on any Elisp file in the current
 directory). If an unloaded dictionary is read, the name of the
 Elisp file will be returned, without extension, suitable for
 passing to `load-library'."
+
   (let (dictname paths)
     ;; when allowing unloaded dictionaries...
     (when allow-unloaded
@@ -3113,6 +3115,8 @@ passing to `load-library'."
 		  "" (apply-partially 'locate-file-completion-table
 				      paths (get-load-suffixes))))
 	(when (and (null (file-name-directory f))
+		   (and (> (length f) 5)
+			(string= (substring f 0 5) "dict-"))
 		   (or (string= (file-name-extension f) "el")
 		       (string= (file-name-extension f) "elc"))
 		   (not (member (file-name-sans-extension f) dictname)))
@@ -3124,19 +3128,31 @@ passing to `load-library'."
 	      (push (list (dictree-name dict)) dictname)))
 	  (or dictlist dictree-loaded-list))
     ;; do completing-read
-    (setq dictname (completing-read prompt dictname nil t nil
-				    (if allow-unloaded
-					'dictree-history
-				      'dictree-loaded-history)
-				    default))
+    (setq dictname (completing-read
+		    prompt
+		    (if allow-unmatched
+			(completion-table-in-turn
+			 dictname 'read-file-name-internal)
+		      dictname)
+		    nil (not allow-unmatched) nil
+		    (if allow-unloaded
+			'dictree-history
+		      'dictree-loaded-history)
+		    default))
     ;; return dictionary
-    (if allow-unloaded
-	(or (and (condition-case nil
-		     (dictree-p (eval (intern-soft dictname)))
-		   (void-variable nil))
-		 (eval (intern-soft dictname)))
-	    dictname)
-      (eval (intern-soft dictname)))))
+    (cond
+     ;; if user typed a file name, return that
+     ((and allow-unmatched (file-regular-p dictname)) dictname)
+     ;; if user selected a loaded dictionary, return dict itself
+     ((condition-case nil
+	  (dictree-p (eval (intern-soft dictname)))
+	(void-variable nil))
+      (eval (intern-soft dictname)))
+     ;; if user selected an unloaded dictionary, return dict name
+     (allow-unloaded dictname)
+     ;; should never get here!
+     (t (error "Unknown error reading dictionary")))
+    ))
 
 
 
