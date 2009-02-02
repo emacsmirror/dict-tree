@@ -2121,9 +2121,7 @@ Returns nil if the stack is empty."
     ;; for a normal dict, call corresponding trie function on dict's trie
     ;; Note: could use a dictree-stack here too - would it be more efficient?
     (funcall triefun
-	     (dictree--trie dict) arg
-	     (when rank-function (dictree--wrap-rankfun rank-function))
-	     maxnum reverse filter)))
+	     (dictree--trie dict) arg rank-function maxnum reverse filter)))
 
 
 
