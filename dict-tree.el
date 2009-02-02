@@ -1170,7 +1170,7 @@ TEST returns non-nil."
     ;; synchronise the lookup cache if dict is a meta-dictionary, since it's
     ;; not done automatically
     (when (and (dictree--meta-dict-p dict)
-	       (dictree--lookup-cache-threshold dict))
+	       (dictree--meta-dict-lookup-cache-threshold dict))
       (setq cache (dictree--lookup-cache dict))
       (cond
        ;; if updating dirty cache entries...
@@ -1182,7 +1182,7 @@ TEST returns non-nil."
 
     ;; synchronize the completion cache, if it exists
     (when (dictree-complete-cache-threshold dict)
-      (setq cache (dictree--complete-cache dict))
+      (setq cache (dictree-complete-cache dict))
       ;; have to check every possible prefix that could be cached!
       (dotimes (i (1+ (length key)))
 	(setq arg (dictree--subseq key 0 i))
@@ -1197,8 +1197,8 @@ TEST returns non-nil."
 	     (t (remhash (cons arg reverse) cache)))))))
 
     ;; synchronize the ranked completion cache, if it exists
-    (when (dictree--complete-ranked-cache-threshold dict)
-      (setq cache (dictree--complete-ranked-cache dict))
+    (when (dictree-complete-ranked-cache-threshold dict)
+      (setq cache (dictree-complete-ranked-cache dict))
       ;; have to check every possible prefix that could be cached!
       (dotimes (i (1+ (length key)))
 	(setq arg (dictree--subseq key 0 i))
@@ -1234,8 +1234,8 @@ TEST returns non-nil."
        (dictree--regexp-cache dict)))
 
     ;; synchronize the ranked regexp cache, if it exists
-    (when (dictree--regexp-ranked-cache-threshold dict)
-      (setq cache (dictree--regexp-ranked-cache dict))
+    (when (dictree-regexp-ranked-cache-threshold dict)
+      (setq cache (dictree-regexp-ranked-cache dict))
       ;; have to check every cache entry to see if it matches
       (maphash
        (lambda (cache-key cache-entry)
@@ -1251,7 +1251,7 @@ TEST returns non-nil."
 						      key newdata deleted))
 	    ;; if deleting dirty cache entries...
 	    (t (remhash (cons arg reverse) cache)))))
-       (dictree--regexp-ranked-cache dict)))
+       (dictree-regexp-ranked-cache dict)))
     ))
 
 
@@ -1732,6 +1732,24 @@ Interactively, DICT is read from the mini-buffer."
 			      (unless (trie-stack-empty-p stack)
 				(heap-add heap stack))))
 			  (dictree--trielist dict)))))
+      (:constructor dictree--regexp-meta-stack-create
+		 (dict regexp &optional reverse
+		  &aux
+		  (combfun (dictree--meta-dict-combfun dict))
+		  (sortfun (trie-construct-sortfun
+			    (dictree-comparison-function dict)))
+		  (heap (heap-create
+			 (dictree--construct-meta-stack-heapfun
+			  sortfun reverse)
+			 (length (dictree--trielist dict))))
+		  (pushed '())
+		  (dummy (mapc
+			  (lambda (trie)
+			    (let ((stack (trie-regexp-stack
+					  trie regexp reverse)))
+			      (unless (trie-stack-empty-p stack)
+				(heap-add heap stack))))
+			  (dictree--trielist dict)))))
    (:copier nil))
   combfun sortfun heap pushed)
 
@@ -1806,13 +1824,58 @@ sufficient, it is better to use one of those instead."
     (trie-complete-stack (dictree--trie dict) prefix reverse)))
 
 
+(defun dictree-regexp-stack (dict regexp &optional reverse)
+  "Return an object that allows REGEXP matches to be accessed
+as if they were a stack.
+
+The stack is sorted in \"lexical\" order, i.e. the order defined
+by DICT's comparison function, or in reverse order if REVERSE is
+non-nil. Calling `dictree-stack-pop' pops the top element (a key
+and its associated data) from the stack.
+
+REGEXP is a regular expression, but it need not necessarily be a
+string. It must be a sequence (vector, list of string) whose
+elements are either elements of the same type as elements of the
+trie keys (which behave as literals in the regexp), or any of the
+usual regexp special characters and backslash constructs. If
+REGEXP is a string, it must be possible to apply `string' to
+individual elements of the keys stored in the trie. The matches
+returned in the alist will be sequences of the same type as KEY.
+
+Back-references and non-greedy postfix operators are *not*
+supported, and the matches are always anchored, so `$' and `^'
+lose their special meanings.
+
+If the regexp contains any non-shy grouping constructs, subgroup
+match data is included in the results. In this case, the car of
+each match is no longer just a key. Instead, it is a list whose
+first element is the matching key, and whose remaining elements
+are cons cells whose cars and cdrs give the start and end indices
+of the elements that matched the corresponding groups, in order.
+
+Note that any modification to DICT *immediately* invalidates all
+trie-stacks created before the modification (in particular,
+calling `dictree-stack-pop' will give unpredictable results).
+
+Operations on dictree-stacks are significantly more efficient
+than constructing a real stack from completions of PREFIX in DICT
+and using standard stack functions. As such, they can be useful
+in implementing efficient algorithms on tries. However, in cases
+where `dictree-complete' or `dictree-complete-ordered' is
+sufficient, it is better to use one of those instead."
+  (if (dictree--meta-dict-p dict)
+      (dictree--regexp-meta-stack-create dict regexp reverse)
+    (trie-regexp-stack (dictree--trie dict) regexp reverse)))
+
+
 (defun dictree-stack-pop (dictree-stack)
   "Pop the first element from the DICTREE-STACK.
 Returns nil if the stack is empty."
   (cond
    ;; if elements have been pushed onto a dict stack, pop those first
    ;; FIXME: shouldn't be using internal trie functions!
-   ((and (trie-stack-p dictree-stack) (trie--stack-pushed dictree-stack))
+   ((and (trie-stack-p dictree-stack)
+	 (trie--stack-pushed dictree-stack))
     (trie-stack-pop dictree-stack))
    ;; if elements have been pushed onto a meta-dict stack, pop those first
    ((and (dictree--meta-stack-p dictree-stack)
@@ -1873,38 +1936,44 @@ Returns nil if the stack is empty."
       (trie-stack-pop dictree-stack)
 
     ;; meta-dictionary dictree-stack...more work!
-    (let ((heap (dictree--meta-stack-heap dictree-stack))
-	  (sortfun (dictree--meta-stack-sortfun dictree-stack))
-	  stack curr next cell)
-      (unless (heap-empty heap)
-	;; remove the first dictree-stack from the heap, pop it's first
-	;; element, and add it back to the heap (note that it will almost
-	;; certainly not end up at the root again)
-	(setq stack (heap-delete-root heap))
-	(setq curr (dictree--stack-pop stack))
-	(unless (dictree-stack-empty-p stack) (heap-add heap stack))
-	;; peek at the first element of the stack now at the root of the heap
+    ;; if elements have been pushed onto meta-dict stack, pop those first
+    (if (dictree--meta-stack-pushed dictree-stack)
+	(pop (dictree--meta-stack-pushed dictree-stack))
+      ;; otherwise...
+      (let ((heap (dictree--meta-stack-heap dictree-stack))
+	    (sortfun (dictree--meta-stack-sortfun dictree-stack))
+	    stack curr next cell)
 	(unless (heap-empty heap)
-	  (setq next (dictree--stack-first (heap-root heap)))
-	  ;; repeat this as long as we keep finding elements with the same key,
-	  ;; combining them together as we go
-	  (when (dictree--meta-stack-combfun dictree-stack)
-	    (while (and (null (funcall sortfun (car curr) (car next)))
-			(null (funcall sortfun (car next) (car curr))))
-	      (setq stack (heap-delete-root heap))
-	      (setq next (dictree--stack-pop stack))
-	      (setq curr
-		    (cons (car curr)
-			  (dictree--cell-create
-			   (funcall (dictree--meta-stack-combfun dictree-stack)
-				    (dictree--cell-data (cdr curr))
-				    (dictree--cell-data (cdr next)))
-			   (append (dictree--cell-plist (cdr curr))
-				   (dictree--cell-plist (cdr next))))))
-	      (heap-add heap stack)
-	      (setq next (dictree--stack-first (heap-root heap))))))
-	;; return the combined dictionary element
-	curr))))
+	  ;; remove the first dictree-stack from the heap, pop it's first
+	  ;; element, and add it back to the heap (note that it will almost
+	  ;; certainly not end up at the root again)
+	  (setq stack (heap-delete-root heap))
+	  (setq curr (dictree--stack-pop stack))
+	  (unless (dictree-stack-empty-p stack) (heap-add heap stack))
+	  ;; peek at the first element of the stack now at the root of the
+	  ;; heap
+	  (unless (heap-empty heap)
+	    (setq next (dictree--stack-first (heap-root heap)))
+	    ;; repeat this as long as we keep finding elements with the same
+	    ;; key, combining them together as we go
+	    (when (dictree--meta-stack-combfun dictree-stack)
+	      (while (and (null (funcall sortfun (car curr) (car next)))
+			  (null (funcall sortfun (car next) (car curr))))
+		(setq stack (heap-delete-root heap))
+		(setq next (dictree--stack-pop stack))
+		(setq curr
+		      (cons
+		       (car curr)
+		       (dictree--cell-create
+			(funcall (dictree--meta-stack-combfun dictree-stack)
+				 (dictree--cell-data (cdr curr))
+				 (dictree--cell-data (cdr next)))
+			(append (dictree--cell-plist (cdr curr))
+				(dictree--cell-plist (cdr next))))))
+		(heap-add heap stack)
+		(setq next (dictree--stack-first (heap-root heap))))))
+	  ;; return the combined dictionary element
+	  curr)))))
 
 
 
@@ -1915,7 +1984,7 @@ Returns nil if the stack is empty."
 (defun dictree--query
   (dict arg cachefun cacheparamfun triefun stackfun
    &optional rank-function maxnum reverse no-cache filter resultfun)
-  ;; Return results of querying DICT's trie with argument ARG using TRIEFUN or
+  ;; Return results of querying DICT with argument ARG using TRIEFUN or
   ;; STACKFUN. If result of calling CACHEPARAMFUN on DICT is non-nil, look
   ;; first for cached result in cache returned by calling CACHEFUN on DICT,
   ;; and cache result if query fulfils caching conditions. If RANK-FUNCTION is
@@ -1944,7 +2013,8 @@ Returns nil if the stack is empty."
 		 (not (eq rank-function (dictree-rank-function dic)))))
 	(setq cmpl
 	      (dictree--do-query dic arg triefun stackfun
-				 rank-function maxnum reverse
+				 (dictree--wrap-rankfun rank-function)
+				 maxnum reverse
 				 (when filter (dictree--wrap-filter filter)))))
 
 
@@ -1968,7 +2038,8 @@ Returns nil if the stack is empty."
 	(let (time)
 	  (setq time (float-time))
 	  (setq cmpl (dictree--do-query dic arg triefun stackfun
-					rank-function maxnum reverse nil))
+					(dictree--wrap-rankfun rank-function)
+					maxnum reverse nil))
 	  (setq time (- (float-time) time))
 	  ;; if we're above the dictionary's completion cache threshold, cache
 	  ;; the result
@@ -2027,7 +2098,7 @@ Returns nil if the stack is empty."
 	    (i 0) cmpl completions)
 	;; pop MAXNUM completions from the stack
 	(while (and (or (null maxnum) (< i maxnum))
-		    (setq cmpl (dictree-stack-pop stack)))
+		    (setq cmpl (dictree--stack-pop stack)))
 	  ;; check completion passes FILTER
 	  (when (or (null filter) (funcall filter cmpl))
 	    (if rank-function
@@ -2039,7 +2110,7 @@ Returns nil if the stack is empty."
 	    ;; it backwards)
 	    (nreverse completions)
 	  ;; for ranked query, pass rest of completions through heap
-	  (while (setq cmpl (dictree-stack-pop stack))
+	  (while (setq cmpl (dictree--stack-pop stack))
 	    (heap-add heap cmpl)
 	    (heap-delete-root heap))
 	  ;; extract completions from heap
@@ -2112,12 +2183,12 @@ default key-data cons cell."
   (dictree--query
    dict prefix
    (if rank-function
-       'dictree--complete-ranked-cache
-     'dictree--complete-cache)
+       'dictree-complete-ranked-cache
+     'dictree-complete-cache)
    (if rank-function
-       'dictree--complete-ranked-cache-threshold
-     'dictree--complete-cache-threshold)
-   'trie-complete 'trie-complete-stack
+       'dictree-complete-ranked-cache-threshold
+     'dictree-complete-cache-threshold)
+   'trie-complete 'dictree-complete-stack
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
@@ -2178,11 +2249,10 @@ lose their special meanings.
 
 If the regexp contains any non-shy grouping constructs, subgroup
 match data is included in the results. In this case, the car of
-each match (as returned by a call to `trie-stack-pop' is no
-longer just a key. Instead, it is a list whose first element is
-the matching key, and whose remaining elements are cons cells
-whose cars and cdrs give the start and end indices of the
-elements that matched the corresponding groups, in order.
+each match is no longer just a key. Instead, it is a list whose
+first element is the matching key, and whose remaining elements
+are cons cells whose cars and cdrs give the start and end indices
+of the elements that matched the corresponding groups, in order.
 
 If optional argument RANK-FUNCTION is any non-nil value that is
 not a function, the matches are sorted according to the
@@ -2216,12 +2286,12 @@ default key-data cons cell."
   (dictree--query
    dict regexp
    (if rank-function
-       'dictree--regexp-ranked-cache
-     'dictree--regexp-cache)
+       'dictree-regexp-ranked-cache
+     'dictree-regexp-cache)
    (if rank-function
-       'dictree--regexp-ranked-cache-threshold
-     'dictree--regexp-cache-threshold)
-   'trie-regexp-search 'trie-regexp-stack
+       'dictree-regexp-ranked-cache-threshold
+     'dictree-regexp-cache-threshold)
+   'trie-regexp-search 'dictree-regexp-stack
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
