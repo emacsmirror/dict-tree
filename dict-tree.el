@@ -2037,9 +2037,11 @@ Returns nil if the stack is empty."
        (t  ;; if there was nothing useful in the cache, do query and time it
 	(let (time)
 	  (setq time (float-time))
-	  (setq cmpl (dictree--do-query dic arg triefun stackfun
-					(dictree--wrap-rankfun rank-function)
-					maxnum reverse nil))
+	  (setq cmpl
+		(dictree--do-query
+		 dic arg triefun stackfun
+		 (when rank-function (dictree--wrap-rankfun rank-function))
+		 maxnum reverse nil))
 	  (setq time (- (float-time) time))
 	  ;; if we're above the dictionary's completion cache threshold, cache
 	  ;; the result
