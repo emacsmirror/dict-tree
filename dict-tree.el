@@ -3353,7 +3353,9 @@ extension, suitable for passing to `load-library'."
 ;;        works in that case.
 
 
-(eval-when-compile (require 'edebug))
+(eval-when-compile
+  (require 'edebug)
+  (require 'advice))
 
 
 (ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun))
