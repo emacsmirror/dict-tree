@@ -2378,7 +2378,7 @@ both forms. See `dictree-write'.
 Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
 
-  (let* ((filename (dictree--filename dict)))
+  (let* ((filename (dictree-filename dict)))
 
     ;; if dictionary has no associated file, prompt for one
     (unless (and filename (> (length filename) 0))
@@ -2386,12 +2386,12 @@ Interactively, DICT is read from the mini-buffer."
 	    (read-file-name
 	     (format "Save dictionary %s to file\
  (leave blank to NOT save): "
-		     (dictree--name dict))
+		     (dictree-name dict))
 	     nil "")))
 
     ;; if filename is blank, don't save
     (if (string= filename "")
-	(message "Dictionary %s NOT saved" (dictree--name dict))
+	(message "Dictionary %s NOT saved" (dictree-name dict))
       ;; otherwise write dictionary to file
       (setf (dictree-filename dict) filename)
       (dictree-write dict filename t compilation))))
@@ -2425,7 +2425,7 @@ and OVERWRITE is the prefix argument."
 
   (if (and (interactive-p) (string= filename ""))
       (progn
-	(message "Dictionary %s NOT written" (dictree--name dict))
+	(message "Dictionary %s NOT written" (dictree-name dict))
 	nil)  ; indicate dictionary wasn't written
 
     (let (dictname buff tmpfile)
@@ -2489,7 +2489,7 @@ and OVERWRITE is the prefix argument."
 	;; if writing to a different name, unload dictionary under old
 	;; name and reload it under new one
 	(setf (dictree-modified dict) nil)
-	(setf (dictree--filename dict) filename)
+	(setf (dictree-filename dict) filename)
 	(unless (string= dictname (dictree-name dict))
 	  (dictree-unload dict)
 	  (dictree-load filename)))
@@ -2877,7 +2877,7 @@ is the prefix argument."
 
     ;; --- convert caches for writing to file ---
     ;; convert lookup cache hash table to an alist, if it exists
-    (when (dictree--lookup-cache-threshold dict)
+    (when (dictree--meta-dict-lookup-cache-threshold dict)
       (maphash (lambda (key val)
 		 (push (cons key (mapcar 'car val)) lookup-alist))
 	       (dictree--meta-dict-lookup-cache dict))
@@ -2931,11 +2931,11 @@ is the prefix argument."
 
     ;; --- write to file ---
     ;; generate the structure to save
-    (setq tmpdict (dictree-create))
+    (setq tmpdict (dictree-meta-dict-create nil))
     (setf (dictree--meta-dict-name tmpdict) dictname
 	  (dictree--meta-dict-filename tmpdict) filename
 	  (dictree--meta-dict-autosave tmpdict)
-	    (dictree--autosave dict)
+	    (dictree--meta-dict-autosave dict)
 	  (dictree--meta-dict-modified tmpdict) nil
 	  (dictree--meta-dict-combine-function tmpdict)
 	    (dictree--meta-dict-combine-function dict)
@@ -2958,20 +2958,25 @@ is the prefix argument."
 	  (dictree--meta-dict-complete-ranked-cache-threshold tmpdict)
 	    (dictree--meta-dict-complete-ranked-cache-threshold dict)
 	  (dictree--meta-dict-dictlist tmpdict)
-	    (dictree--meta-dict-dictlist dict)
+	    (mapcar (lambda (dic) (intern (dictree-name dic)))
+		    (dictree--meta-dict-dictlist dict))
 	  (dictree--meta-dict-meta-dict-list tmpdict) nil)
 
     ;; write lisp code that generates the dictionary object
-    (insert "(eval-when-compile (require 'cl))\n")
-    (insert "(require 'dict-tree)\n")
-    (mapc (lambda (name) (insert "(require '" name ")\n"))
-	  (dictree--meta-dict-dictlist tmpdict))
-    (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
-    (insert "(setq " dictname " '" (prin1-to-string tmpdict) ")\n")
-    (insert "(dictree--meta-dict-dictlist\n"
-	    " " dictname "\n"
-	    " (mapcar (lambda (name) (eval (intern-soft name)))\n"
-	    "         (dictree--meta-dict-dictlist " dictname " )))\n")
+    (insert "(eval-when-compile (require 'cl))\n"
+	    "(require 'dict-tree)\n")
+    (mapc
+     (lambda (dic)
+       (insert "(unless (dictree-load " (dictree-filename dic) ")\n"
+	       "        (error \"Failed to load dictionary \\\""
+	       (dictree-name dic) "\\\" required by meta-dict \\\""
+	       dictname "\n"))
+     (dictree--meta-dict-dictlist dict))
+    (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n"
+	    "(setq " dictname " '" (prin1-to-string tmpdict) ")\n"
+	    "(setf (dictree--meta-dict-dictlist " dictname ")\n"
+	    "      (mapcar 'eval (dictree--meta-dict-dictlist "
+	                          dictname ")))\n")
     (when hashcode (insert hashcode))
     (insert "(unless (memq " dictname " dictree-loaded-list)"
 	    " (push " dictname " dictree-loaded-list))\n")
@@ -3020,12 +3025,13 @@ are created when using a trie that is not self-balancing, see
       (message "No file specified; dictionary %s NOT populated"
 	       (dictree-name dict))
 
-    (unless key-loadfun
-      (setq key-loadfun (dictree--key-loadfun dict)))
-    (unless data-loadfun
-      (setq data-loadfun (dictree--data-loadfun dict)))
-    (unless plist-loadfun
-      (setq plist-loadfun (dictree--plist-loadfun dict)))
+    (unless (dictree--meta-dict-p dict)
+      (unless key-loadfun
+	(setq key-loadfun (dictree--key-loadfun dict)))
+      (unless data-loadfun
+	(setq data-loadfun (dictree--data-loadfun dict)))
+      (unless plist-loadfun
+	(setq plist-loadfun (dictree--plist-loadfun dict))))
 
     (save-excursion
       (let ((buff (find-file-noselect file)))
@@ -3358,25 +3364,36 @@ extension, suitable for passing to `load-library'."
   (require 'advice))
 
 
+(defun dictree--edebug-pretty-print (object)
+  (cond
+   ((dictree-p object)
+    (concat "#<dict-tree \"" (dictree-name object) "\">"))
+   ((and object (listp object))
+    (concat "(" (mapconcat 'dictree--edebug-pretty-print object " ")
+	    ")"))
+   (t (prin1-to-string object))))
+
+
 (ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun))
 
 (defadvice edebug-prin1
   (around dictree activate compile preactivate)
-  (if (dictree-p object)
-      (let ((pretty (concat "#<dict-tree " (dictree-name object) ">")))
-	(prin1 pretty printcharfun)
-	(setq ad-return-value pretty))
-    ad-do-it))
+  (let ((pretty (dictree--edebug-pretty-print object)))
+    (if pretty
+	(progn
+	  (prin1 pretty printcharfun)
+	  (setq ad-return-value pretty))
+    ad-do-it)))
 
 
 (ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape))
 
 (defadvice edebug-prin1-to-string
   (around dictree activate compile preactivate)
-  (if (dictree-p object)
-      (setq ad-return-value
-	    (concat "#<dict-tree " (dictree-name object) ">"))
-    ad-do-it))
+  (let ((pretty (dictree--edebug-pretty-print object)))
+    (if pretty
+	(setq ad-return-value pretty)
+      ad-do-it)))
 
 
 
