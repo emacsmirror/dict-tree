@@ -3368,9 +3368,17 @@ extension, suitable for passing to `load-library'."
   (cond
    ((dictree-p object)
     (concat "#<dict-tree \"" (dictree-name object) "\">"))
-   ((and object (listp object))
-    (concat "(" (mapconcat 'dictree--edebug-pretty-print object " ")
-	    ")"))
+   ((consp object)
+    (if (consp (cdr object))
+	(let ((pretty "("))
+	  (while object
+	    (setq pretty
+		  (concat pretty
+			  (dictree--edebug-pretty-print (pop object))
+			  (when object " "))))
+	  (concat pretty ")"))
+      (concat "(" (dictree--edebug-pretty-print (car object))
+	      " . " (dictree--edebug-pretty-print (cdr object)) ")")))
    (t (prin1-to-string object))))
 
 
