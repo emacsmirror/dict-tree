@@ -2885,12 +2885,12 @@ is the prefix argument."
       (setq hashcode
 	    (concat
 	     hashcode
-	     "(let ((lookup-cache (make-hash-table :test 'equal)))\n"
+	     "(let ((cache (make-hash-table :test 'equal)))\n"
 	     "  (mapc (lambda (entry)\n"
-	     "    (puthash (car entry) (cdr entry) lookup-cache))\n"
+	     "    (puthash (car entry) (cdr entry) cache))\n"
 	     "    (dictree--meta-dict-lookup-cache " dictname "))\n"
 	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
-	     "        lookup-cache))\n")))
+	     "        cache))\n")))
 
     ;; convert query caches, if they exist
     (dolist (cache-details
@@ -2921,7 +2921,7 @@ is the prefix argument."
 	  hashcode
 	  "(let ((cache (make-hash-table :test 'equal)))\n"
 	  "  (mapc (lambda (entry)\n"
-	  "    (puthash (car entry) (cdr entry) complete-cache))\n"
+	  "    (puthash (car entry) (cdr entry) cache))\n"
 	  "    (" (symbol-name (nth 2 cache-details)) " "
 	          dictname "))\n"
 	  "  (setf (" (symbol-name (nth 2 cache-details)) " "
@@ -2967,10 +2967,10 @@ is the prefix argument."
 	    "(require 'dict-tree)\n")
     (mapc
      (lambda (dic)
-       (insert "(unless (dictree-load " (dictree-filename dic) ")\n"
+       (insert "(unless (dictree-load \"" (dictree-filename dic) "\")\n"
 	       "        (error \"Failed to load dictionary \\\""
 	       (dictree-name dic) "\\\" required by meta-dict \\\""
-	       dictname "\n"))
+	       dictname "\\\"\"))\n"))
      (dictree--meta-dict-dictlist dict))
     (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n"
 	    "(setq " dictname " '" (prin1-to-string tmpdict) ")\n"
