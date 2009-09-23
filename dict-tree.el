@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2009 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.12.1
+;; Version: 0.12.2
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -52,6 +52,9 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.12.2
+;; * bug-fix to DEFAULT argument handling in `read-dict'
 ;;
 ;; Version 0.12.1
 ;; * added `edebug-prin1' and `edebug-prin1-to-string' advice to prevent
@@ -3319,7 +3322,7 @@ extension, suitable for passing to `load-library'."
 		    (if allow-unloaded
 			'dictree-history
 		      'dictree-loaded-history)
-		    default))
+		    (and (dictree-p default) (dictree-name default))))
     ;; return dictionary
     (cond
      ;; if user typed a file name, return that
