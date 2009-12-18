@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2009 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.12.2
+;; Version: 0.12.3
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -52,6 +52,9 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.2.3
+;; * bug-fix in `dictree--edebug-pretty-print'
 ;;
 ;; Version 0.12.2
 ;; * bug-fix to DEFAULT argument handling in `read-dict'
@@ -2485,9 +2488,8 @@ and OVERWRITE is the prefix argument."
 			err))
 		    (rename-file (concat tmpfile ".elc")
 				 (concat filename ".elc") t)
-		  (error))))
-	  (error (error "Error saving. Dictionary %s NOT saved"
-			dictname)))
+		  (error ""))))
+	  (error "Error saving. Dictionary %s NOT saved" dictname))
 
 	;; if writing to a different name, unload dictionary under old
 	;; name and reload it under new one
@@ -3377,11 +3379,26 @@ extension, suitable for passing to `load-library'."
 	  (while object
 	    (setq pretty
 		  (concat pretty
-			  (dictree--edebug-pretty-print (pop object))
+			  (dictree--edebug-pretty-print
+			   (if (atom object)
+			       (prog1
+				   (dictree--edebug-pretty-print object)
+				 (setq object nil))
+			     (pop object)))
 			  (when object " "))))
 	  (concat pretty ")"))
       (concat "(" (dictree--edebug-pretty-print (car object))
 	      " . " (dictree--edebug-pretty-print (cdr object)) ")")))
+   ((vectorp object)
+    (let ((pretty "[") (len (length object)))
+      (dotimes (i (1- len))
+	(setq pretty
+	      (concat pretty
+		      (dictree--edebug-pretty-print (aref object i))
+		      " ")))
+      (concat pretty
+	      (dictree--edebug-pretty-print (aref object (1- len)))
+	      "]")))
    (t (prin1-to-string object))))
 
 
