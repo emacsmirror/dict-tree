@@ -3345,88 +3345,26 @@ extension, suitable for passing to `load-library'."
 ;; ----------------------------------------------------------------
 ;;            Pretty-print dictionaries during edebug
 
-;; We advise the `edebug-prin1' and `edebug-prin1-to-string' functions
-;; (actually, aliases) so that they pring "#<dict-tree NAME>" instead of
-;; the full print form for dictionaries.
+;; We use `cedet-edebug-add-print-override' from cedet-edebug.el to make
+;; edebug print "#<dict-tree NAME>" instead of the full print form for
+;; dictionaries. (This is cleaner than using aliases or advice.)
 ;;
 ;; This is because, if left to its own devices, edebug hangs for ages
 ;; whilst printing large dictionaries, and you either have to wait for a
 ;; *very* long time for it to finish, or kill Emacs entirely. (Even C-g
-;; C-g fails!)
-;;
-;; Since the print form of a dictionary is practically incomprehensible
-;; anyway, we don't lose much by doing this. If you *really* want to
-;; print dictionaries in full whilst edebugging, despite this warning,
-;; disable the advice.
-;;
-;; FIXME: Should use `cedet-edebug-prin1-extensions' instead of advice
-;;        when `cedet-edebug' is loaded, though I believe this still
-;;        works in that case.
+;; C-g fails!) Since the print form of a dictionary is practically
+;; incomprehensible anyway, we don't lose much by doing this.
 
+(require 'cedet-edebug)
 
-(eval-when-compile
-  (require 'edebug)
-  (require 'advice))
+(defun dictree-pretty-print (dict)
+  (concat "#<dict-tree \"" (dictree--name dict) "\">"))
 
-
-(defun dictree--edebug-pretty-print (object)
-  (cond
-   ((dictree-p object)
-    (concat "#<dict-tree \"" (dictree-name object) "\">"))
-   ((consp object)
-    (if (consp (cdr object))
-	(let ((pretty "("))
-	  (while object
-	    (setq pretty
-		  (concat pretty
-			  (dictree--edebug-pretty-print
-			   (if (atom object)
-			       (prog1
-				   (dictree--edebug-pretty-print object)
-				 (setq object nil))
-			     (pop object)))
-			  (when object " "))))
-	  (concat pretty ")"))
-      (concat "(" (dictree--edebug-pretty-print (car object))
-	      " . " (dictree--edebug-pretty-print (cdr object)) ")")))
-   ((vectorp object)
-    (let ((pretty "[") (len (length object)))
-      (dotimes (i (1- len))
-	(setq pretty
-	      (concat pretty
-		      (dictree--edebug-pretty-print (aref object i))
-		      " ")))
-      (concat pretty
-	      (dictree--edebug-pretty-print (aref object (1- len)))
-	      "]")))
-   (t (prin1-to-string object))))
-
-
-(ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun))
-
-(defadvice edebug-prin1
-  (around dictree activate compile preactivate)
-  (let ((pretty (dictree--edebug-pretty-print object)))
-    (if pretty
-	(progn
-	  (prin1 pretty printcharfun)
-	  (setq ad-return-value pretty))
-    ad-do-it)))
-
-
-(ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape))
-
-(defadvice edebug-prin1-to-string
-  (around dictree activate compile preactivate)
-  (let ((pretty (dictree--edebug-pretty-print object)))
-    (if pretty
-	(setq ad-return-value pretty)
-      ad-do-it)))
+(cedet-edebug-add-print-override 'dictree-p 'dictree-pretty-print)
 
 
 
 (provide 'dict-tree)
-
 
 ;;; Local Variables:
 ;;; fill-column: 72
