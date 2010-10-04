@@ -3346,13 +3346,17 @@ extension, suitable for passing to `load-library'."
 ;;            Pretty-print dictionaries during edebug
 
 ;; We advise the `edebug-prin1' and `edebug-prin1-to-string' functions
-;; (actually, aliases) so that they pring "#<dict-tree NAME>" instead of
+;; (actually, aliases) so that they print "#<dict-tree NAME>" instead of
 ;; the full print form for dictionaries.
 ;;
 ;; This is because, if left to its own devices, edebug hangs for ages
 ;; whilst printing large dictionaries, and you either have to wait for a
 ;; *very* long time for it to finish, or kill Emacs entirely. (Even C-g
 ;; C-g fails!)
+;;
+;; We do this also for lists of dictionaries, since those occur quite
+;; often, but not for other sequence types or deeper nested structures,
+;; to keep the implementation as simple as possible.
 ;;
 ;; Since the print form of a dictionary is practically incomprehensible
 ;; anyway, we don't lose much by doing this. If you *really* want to
@@ -3373,33 +3377,27 @@ extension, suitable for passing to `load-library'."
   (cond
    ((dictree-p object)
     (concat "#<dict-tree \"" (dictree-name object) "\">"))
-   ((consp object)
-    (if (consp (cdr object))
-	(let ((pretty "("))
-	  (while object
-	    (setq pretty
-		  (concat pretty
-			  (dictree--edebug-pretty-print
-			   (if (atom object)
-			       (prog1
-				   (dictree--edebug-pretty-print object)
-				 (setq object nil))
-			     (pop object)))
-			  (when object " "))))
-	  (concat pretty ")"))
-      (concat "(" (dictree--edebug-pretty-print (car object))
-	      " . " (dictree--edebug-pretty-print (cdr object)) ")")))
-   ((vectorp object)
-    (let ((pretty "[") (len (length object)))
-      (dotimes (i (1- len))
-	(setq pretty
-	      (concat pretty
-		      (dictree--edebug-pretty-print (aref object i))
-		      " ")))
-      (concat pretty
-	      (dictree--edebug-pretty-print (aref object (1- len)))
-	      "]")))
-   (t (prin1-to-string object))))
+   ((let ((dlist object) (test t))
+      (while (or (dictree-p (car-safe dlist))
+		 (and dlist (setq test nil)))
+	(setq dlist (cdr dlist)))
+      test)
+    (concat "(" (mapconcat (lambda (d)
+			     (concat "#<dict-tree \""
+				     (dictree-name d) "\">"))
+			   object " ") ")"))
+   ;; ((vectorp object)
+   ;;  (let ((pretty "[") (len (length object)))
+   ;;    (dotimes (i (1- len))
+   ;; 	(setq pretty
+   ;; 	      (concat pretty
+   ;; 		      (if (trie-p (aref object i))
+   ;; 			  "#<trie>" (prin1-to-string (aref object i))) " ")))
+   ;;    (concat pretty
+   ;; 	      (if (trie-p (aref object (1- len)))
+   ;; 		  "#<trie>" (prin1-to-string (aref object (1- len))))
+   ;; 	      "]")))
+   ))
 
 
 (ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun))
