@@ -2,10 +2,10 @@
 ;;; dict-tree.el --- dictionary data structure package
 
 
-;; Copyright (C) 2004-2009 Toby Cubitt
+;; Copyright (C) 2004-2010 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.12.3
+;; Version: 0.12.4
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -52,6 +52,9 @@
 
 
 ;;; Change log:
+;; Version 0.2.4
+;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
+;;   instead of "()"
 ;;
 ;; Version 0.2.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
@@ -3377,6 +3380,7 @@ extension, suitable for passing to `load-library'."
   (cond
    ((dictree-p object)
     (concat "#<dict-tree \"" (dictree-name object) "\">"))
+   ((null object) "nil")
    ((let ((dlist object) (test t))
       (while (or (dictree-p (car-safe dlist))
 		 (and dlist (setq test nil)))
