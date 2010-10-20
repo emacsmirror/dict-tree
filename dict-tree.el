@@ -56,7 +56,16 @@
 ;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
 ;;   instead of "()"
 ;;
-;; Version 0.2.3
+;; Version 0.12.4
+;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
+;;   instead of "()"
+;; * modified `dictree-save-modified' to catch errors when saving
+;;   dictionaries, and indicate failures via its return value
+;; * removed `dictree-save-modified' from `kill-emacs-hook' and added it
+;;   instead to `kill-emacs-query-functions', so that dictionary save
+;;   failures don't make it impossible to quie Emacs
+;;
+;; Version 0.12.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
 ;;
 ;; Version 0.12.2
@@ -2509,8 +2518,13 @@ and OVERWRITE is the prefix argument."
 
 
 
-(defun dictree-save-modified (&optional dict ask compilation force)
+(defun dictree-save-modified (&optional dict ask compilation force
+					no-fail-query)
   "Save all modified dictionaries that have their autosave flag set.
+Returns t if all dictionaries were successfully saved. Otherwise,
+inform the user about the dictionaries which failed to save
+properly, ask them whether they wish to continue anyway, and
+return t or nil accordingly.
 
 If optional argument DICT is a list of dictionaries or a single
 dictionary, only save those.
@@ -2525,7 +2539,12 @@ save both forms. See `dictree-write'.
 If optional argument FORCE is non-nil, save modified dictionaries
 irrespective of their autosave flag.
 
-Interactively, FORCE is the prefix argument."
+If optional argument NO-FAIL-QUERY is non-nil, the user will not
+be queried if a dictionary fails to save properly, and the return
+value is always nil.
+
+Interactively, FORCE is the prefix argument, and the user will not be
+asked whether they wish to continue after a failed save."
   (interactive "P")
 
   ;; sort out arguments
@@ -2535,21 +2554,42 @@ Interactively, FORCE is the prefix argument."
   ;; For each dictionary in list / each loaded dictionary, check if
   ;; dictionary has been modified. If so, save it if autosave is set or
   ;; FORCE is non-nil.
-  (dolist (dic (if (null dict)
-		   dictree-loaded-list
-		 dict))
-    (when (and (dictree-modified dic)
-	       (or force (dictree-autosave dic))
-	       (or (not ask)
-		   (y-or-n-p (format "Save modified dictionary %s? "
-				     (dictree-filename dic)))))
-      (dictree-save dic compilation)
-      (setf (dictree-modified dic) nil))))
+  (let (save-failures)
+    (dolist (dic (if (null dict)
+		     dictree-loaded-list
+		   dict))
+      (when (and (dictree-modified dic)
+		 (or force (dictree-autosave dic))
+		 (or (not ask)
+		     (y-or-n-p (format "Save modified dictionary %s? "
+				       (dictree-filename dic)))))
+	(condition-case nil
+	    (progn
+	      (dictree-save dic compilation)
+	      (setf (dictree-modified dic) nil))
+	  (error (push dic save-failures)))))
+
+    ;; prompt if dictionary saving failed
+    (if save-failures
+	(if (or (interactive-p) no-fail-query)
+	    (progn
+	      (message
+	       (concat
+		"Error: failed to save the following modified "
+		"dictionaries: "
+		(mapconcat 'dictree--name save-failures ", ")))
+	      nil)
+	  (yes-or-no-p
+	   (concat "Error: failed to save the following modified "
+		   "dictionaries: "
+		   (mapconcat 'dictree--name save-failures ", ")
+		   "; continue anyway? ")))
+      t)))
 
 
 ;; Add the dictree-save-modified function to the kill-emacs-hook to save
 ;; modified dictionaries when exiting emacs
-(add-hook 'kill-emacs-hook 'dictree-save-modified)
+(add-hook 'kill-emacs-query-functions 'dictree-save-modified)
 
 
 
