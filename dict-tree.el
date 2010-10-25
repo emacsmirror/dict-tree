@@ -52,10 +52,6 @@
 
 
 ;;; Change log:
-;; Version 0.2.4
-;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
-;;   instead of "()"
-;;
 ;; Version 0.12.4
 ;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
 ;;   instead of "()"
@@ -63,7 +59,9 @@
 ;;   dictionaries, and indicate failures via its return value
 ;; * removed `dictree-save-modified' from `kill-emacs-hook' and added it
 ;;   instead to `kill-emacs-query-functions', so that dictionary save
-;;   failures don't make it impossible to quie Emacs
+;;   failures don't make it impossible to quit Emacs
+;; * fixed bug in `dictree--merge' that caused it to retain one too many
+;;   list elements for non-null MAXNUM
 ;;
 ;; Version 0.12.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
@@ -573,7 +571,7 @@ If START or END is negative, it counts from the end."
   ;; using the return value as the merged element.
   (or (listp list1) (setq list1 (append list1 nil)))
   (or (listp list2) (setq list2 (append list2 nil)))
-  (let (res (i -1))
+  (let (res (i 0))
 
     ;; build up result list backwards
     (while (and list1 list2 (or (null maxnum) (< (incf i) maxnum)))
