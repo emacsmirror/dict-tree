@@ -62,6 +62,8 @@
 ;;   failures don't make it impossible to quit Emacs
 ;; * fixed bug in `dictree--merge' that caused it to retain one too many
 ;;   list elements for non-null MAXNUM
+;; * fixed `dictree--update-cache', which previously never updated
+;;   cached results for lists of prefixes in `dictree-complete' queries
 ;;
 ;; Version 0.12.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
@@ -1205,6 +1207,30 @@ TEST returns non-nil."
 ;; ----------------------------------------------------------------
 ;;                     Cache updating
 
+(defun dictree--prefix-p (prefix str)
+  "Return t if PREFIX is a prefix of STR, nil otherwise.
+
+PREFIX and STR can be any sequence type (string, vector, or
+list), but they must both be the same type. PREFIX can also be a
+list of sequences, in which case it returns t if any element of
+PREFIX is a prefix of STR."
+  ;; wrap prefix in a list if necessary
+  ;; FIXME: the test for a list of prefixes, below, will fail if the
+  ;;        PREFIX sequence is a list, and the elements of PREFIX are
+  ;;        themselves lists (there might be no easy way to fully fix
+  ;;        this...)
+  (when (or (atom prefix)
+	    (and (listp prefix) (not (sequencep (car prefix)))))
+    (setq prefix (list prefix)))
+  (let (len)
+    (catch 'is-prefix
+      (dolist (pfx prefix)
+	(setq len (length pfx))
+	(when (and (<= len (length str))
+		   (equal pfx (dictree--subseq str 0 len)))
+	  (throw 'is-prefix t))))))
+
+
 (defun dictree--update-cache (dict key newdata &optional deleted)
   ;; Synchronise dictionary DICT's caches, given that the data
   ;; associated with KEY has been changed to NEWDATA, or KEY has been
@@ -1227,39 +1253,43 @@ TEST returns non-nil."
     ;; synchronize the completion cache, if it exists
     (when (dictree-complete-cache-threshold dict)
       (setq cache (dictree-complete-cache dict))
-      ;; have to check every possible prefix that could be cached!
-      (dotimes (i (1+ (length key)))
-	(setq arg (dictree--subseq key 0 i))
-	(dolist (reverse '(nil t))
-	  (when (setq cache-entry (gethash (cons arg reverse) cache))
+      ;; check every cache entry to see if it matches
+      (maphash
+       (lambda (cache-key cache-entry)
+	 (setq arg (car cache-key))
+	 (when (dictree--prefix-p arg key)
+	   (setq reverse (cdr cache-key))
 	    (cond
 	     ;; if updating dirty cache entries...
 	     ((eq (dictree-cache-update-policy dict) 'synchronize)
 	      (dictree--synchronize-query-cache
 	       dict cache cache-entry arg reverse key newdata deleted))
 	     ;; if deleting dirty cache entries...
-	     (t (remhash (cons arg reverse) cache)))))))
+	     (t (remhash (cons arg reverse) cache)))))
+       cache))
 
     ;; synchronize the ranked completion cache, if it exists
     (when (dictree-complete-ranked-cache-threshold dict)
       (setq cache (dictree-complete-ranked-cache dict))
-      ;; have to check every possible prefix that could be cached!
-      (dotimes (i (1+ (length key)))
-	(setq arg (dictree--subseq key 0 i))
-	(dolist (reverse '(nil t))
-	  (when (setq cache-entry (gethash (cons arg reverse) cache))
+      ;; check every cache entry to see if it matches
+      (maphash
+       (lambda (cache-key cache-entry)
+	 (setq arg (car cache-key))
+	 (when (dictree--prefix-p arg key)
+	   (setq reverse (cdr cache-key))
 	    (cond
 	     ;; if updating dirty cache entries...
 	     ((eq (dictree-cache-update-policy dict) 'synchronize)
 	      (dictree--synchronize-ranked-query-cache
 	       dict cache cache-entry arg reverse key newdata deleted))
 	     ;; if deleting dirty cache entries...
-	     (t (remhash (cons arg reverse) cache)))))))
+	     (t (remhash (cons arg reverse) cache)))))
+       cache))
 
     ;; synchronize the regexp cache, if it exists
     (when (dictree-regexp-cache-threshold dict)
       (setq cache (dictree--regexp-cache dict))
-      ;; have to check every cache entry to see if it matches
+      ;; check every cache entry to see if it matches
       (maphash
        (lambda (cache-key cache-entry)
 	 (setq arg (car cache-key))
@@ -1269,11 +1299,11 @@ TEST returns non-nil."
 	   (cond
 	    ;; if updating dirty cache entries...
 	    ((eq (dictree-cache-update-policy dict) 'synchronize)
-	     (dictree--synchronize-ranked-query-cache
+	     (dictree--synchronize-query-cache
 	      dict cache cache-entry arg reverse key newdata deleted))
 	    ;; if deleting dirty cache entries...
 	    (t (remhash (cons arg reverse) cache)))))
-       (dictree--regexp-cache dict)))
+       cache))
 
     ;; synchronize the ranked regexp cache, if it exists
     (when (dictree-regexp-ranked-cache-threshold dict)
@@ -1292,7 +1322,7 @@ TEST returns non-nil."
 	      dict cache cache-entry arg reverse key newdata deleted))
 	    ;; if deleting dirty cache entries...
 	    (t (remhash (cons arg reverse) cache)))))
-       (dictree-regexp-ranked-cache dict)))
+       cache))
     ))
 
 
@@ -2192,7 +2222,7 @@ Returns nil if the stack is empty."
 	  completions))  ; return completion list
 
     ;; for a normal dict, call corresponding trie function on dict's
-    ;; trie Note: could use a dictree-stack here too - would it be more
+    ;; trie. Note: could use a dictree-stack here too - would it be more
     ;; efficient?
     (funcall triefun
 	     (dictree--trie dict) arg rank-function
