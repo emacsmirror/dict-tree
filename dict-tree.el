@@ -64,6 +64,7 @@
 ;;   list elements for non-null MAXNUM
 ;; * fixed `dictree--update-cache', which previously never updated
 ;;   cached results for lists of prefixes in `dictree-complete' queries
+;; * fixed implementation of 'both cache policy
 ;;
 ;; Version 0.12.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
@@ -689,7 +690,9 @@ LOOKUP-CACHE-THRESHOLD value (since those are likely to be the
 slower ones), and caches completions of prefixes that are shorter
 than the corresponding CACHE-THRESHOLD (since those are likely to
 be the slower ones in that case). The setting 'both requires both
-conditions to be satisfied simultaneously.
+conditions to be satisfied simultaneously. In this case,
+CACHE-THRESHOLD must be a plist with properties :time and :length
+specifying the corresponding cache thresholds.
 
 CACHE-UPDATE-POLICY should be a symbol ('synchronize or 'delete),
 which determines how the caches are updated when data is inserted
@@ -1231,6 +1234,28 @@ PREFIX is a prefix of STR."
 	  (throw 'is-prefix t))))))
 
 
+(defun dictree--above-cache-threshold-p
+  (time length policy threshold &optional cache-long-keys)
+  ;; Return t if query taking TIME seconds for a key of length LENGTH
+  ;; should be cached according to the cache POLICY and
+  ;; THRESHOLD. Otherwise, return nil. Optional argument CACHE-LONG-KEYS
+  ;; means that keys of length longer than THRESHOLD are to be
+  ;; cached. Default is keys of length shorter than THRESHOLD.
+  (and threshold
+       (or (eq threshold t)
+	   (and (eq policy 'time) (>= time threshold))
+	   ;; note: we cache lookups of *longer* keys, because those are
+	   ;;       likely to be slower ones
+	   (and (eq policy 'length)
+		(if cache-long-keys
+		    (>= length threshold) (<= length threshold)))
+	   (and (eq policy 'both)
+		(or (>= time (plist-get threshold :time))
+		    (if cache-long-keys
+			(>= length (plist-get threshold :length))
+		      (<= length (plist-get threshold :length))))))))
+
+
 (defun dictree--update-cache (dict key newdata &optional deleted)
   ;; Synchronise dictionary DICT's caches, given that the data
   ;; associated with KEY has been changed to NEWDATA, or KEY has been
@@ -1433,20 +1458,17 @@ Optional argument NILFLAG specifies a value to return instead of
 nil if KEY does not exist in TREE. This allows a non-existent KEY
 to be distinguished from an element with a null association. (See
 also `dictree-member-p' for testing existence alone.)"
-  (let ((data (dictree--lookup dict key nilflag)))
+  (let* ((data (dictree--lookup dict key nilflag)))
     (if (eq data nilflag)
 	nilflag
       (dictree--cell-data data))))
 
-
 (defalias 'dictree-lookup 'dictree-member)
-
 
 (defun dictree-member-p (dict key)
   "Return t if KEY exists in DICT, nil otherwise."
   (let ((flag '(nil)))
     (not (eq flag (dictree-member dict key flag)))))
-
 
 
 (defun dictree--lookup (dict key nilflag)
@@ -1473,8 +1495,7 @@ also `dictree-member-p' for testing existence alone.)"
 	    ;; skip dictionary if it doesn't contain KEY
 	    (unless (eq newdata newflag)
 	      ;; if we haven't found KEY before, we have now!
-	      (if (eq data flag)
-		  (setq data newdata)
+	      (if (eq data flag) (setq data newdata)
 		;; otherwise, combine the previous data with the new
 		;; data
 		(setq data (funcall (dictree--meta-dict-combfun dict)
@@ -1491,19 +1512,9 @@ also `dictree-member-p' for testing existence alone.)"
       ;; if lookup found something, and we're above the lookup
       ;; cache-threshold, cache the result
       (when (and (not (eq data flag))
-		 (dictree-lookup-cache-threshold dict)
-		 (or (eq (dictree-lookup-cache-threshold dict) t)
-		     (and (or (eq (dictree-cache-policy dict) 'time)
-			      (eq (dictree-cache-policy dict) 'both))
-			  (>= time
-			      (dictree-lookup-cache-threshold dict)))
-		     (and (or (eq (dictree-cache-policy dict) 'length)
-			      (eq (dictree-cache-policy dict) 'both))
-			  ;; note: we cache lookups of *longer* keys,
-			  ;;       because those are likely to be slower
-			  ;;       ones
-			  (>= (length key)
-			      (dictree-lookup-cache-threshold dict)))))
+		 (dictree--above-cache-threshold-p
+		  time (length key) (dictree-cache-policy dict)
+		  (dictree-lookup-cache-threshold dict) 'long-keys))
 	(setf (dictree-modified dict) t)
 	(puthash key data (dictree-lookup-cache dict))))
 
@@ -2143,18 +2154,9 @@ Returns nil if the stack is empty."
 	  ;; if we're above the dictionary's completion cache threshold,
 	  ;; cache the result
 	  (when (and (not no-cache)
-		     cacheparam
-		     (or (eq cacheparam t)
-			 (and (or (eq (dictree-cache-policy dic) 'time)
-				  (eq (dictree-cache-policy dic) 'both))
-			      (>= time cacheparam))
-			 (and (or (eq (dictree-cache-policy dic)
-				      'length)
-				  (eq (dictree-cache-policy dic) 'both))
-			      ;; note: we cache completions of *shorter*
-			      ;;       keys, because those are likely to
-			      ;;       be slower
-			      (<= (length arg) cacheparam))))
+		     (dictree--above-cache-threshold-p
+		      time (length arg) (dictree-cache-policy dic)
+		      cacheparam))
 	    (setf (dictree-modified dic) t)
 	    (puthash (cons arg reverse)
 		     (dictree--cache-create cmpl maxnum)
