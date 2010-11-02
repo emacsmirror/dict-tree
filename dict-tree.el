@@ -65,6 +65,8 @@
 ;; * fixed `dictree--update-cache', which previously never updated
 ;;   cached results for lists of prefixes in `dictree-complete' queries
 ;; * fixed implementation of 'both cache policy
+;; * fixed bug in `read-dict' preventing completion on dictionary files
+;;   in `load-path'
 ;;
 ;; Version 0.12.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
@@ -3376,8 +3378,7 @@ extension, suitable for passing to `load-library'."
 	(when (and (null (file-name-directory f))
 		   (and (> (length f) 5)
 			(string= (substring f 0 5) "dict-"))
-		   (or (string= (file-name-extension f) "el")
-		       (string= (file-name-extension f) "elc"))
+		   (null (file-name-extension f))
 		   (not (member (file-name-sans-extension f) dictname)))
 	  (push (file-name-sans-extension f) dictname))))
     ;; gather names of loaded dictionaries
