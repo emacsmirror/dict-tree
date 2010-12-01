@@ -52,6 +52,7 @@
 
 
 ;;; Change log:
+;;
 ;; Version 0.12.4
 ;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
 ;;   instead of "()"
@@ -67,6 +68,14 @@
 ;; * fixed implementation of 'both cache policy
 ;; * fixed bug in `read-dict' preventing completion on dictionary files
 ;;   in `load-path'
+;; * fixed bugs in synchronisation of regexp query caches, renaming
+;;   `dictree--synchronise-query-cache' and
+;;   `dictree--synchronise-ranked-query-cache' to
+;;   `dictree--synchronise-completion-cache' and
+;;   `dictree--synchronise-ranked-completion-cache', and creating
+;;   separate `dictree--synchronise-regexp-cache' and
+;;   `dictree--synchronise-ranked-regep-cache' functions to handle
+;;   regexp query caches
 ;;
 ;; Version 0.12.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
@@ -334,6 +343,7 @@ If START or END is negative, it counts from the end."
 	       (cons (car b) (dictree--cell-data (cdr b))))))
 
 (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
+  ;; return wrapped combfun to deal with data wrapping
   `(lambda (cell1 cell2)
      (cons (,combfun (dictree--cell-data cell1)
 		     (dictree--cell-data cell2))
@@ -1289,8 +1299,8 @@ PREFIX is a prefix of STR."
 	    (cond
 	     ;; if updating dirty cache entries...
 	     ((eq (dictree-cache-update-policy dict) 'synchronize)
-	      (dictree--synchronize-query-cache
-	       dict cache cache-entry arg reverse key newdata deleted))
+	      (dictree--synchronize-completion-cache
+	       dict cache-entry arg reverse key newdata deleted))
 	     ;; if deleting dirty cache entries...
 	     (t (remhash (cons arg reverse) cache)))))
        cache))
@@ -1307,8 +1317,8 @@ PREFIX is a prefix of STR."
 	    (cond
 	     ;; if updating dirty cache entries...
 	     ((eq (dictree-cache-update-policy dict) 'synchronize)
-	      (dictree--synchronize-ranked-query-cache
-	       dict cache cache-entry arg reverse key newdata deleted))
+	      (dictree--synchronize-ranked-completion-cache
+	       dict cache-entry arg reverse key newdata deleted))
 	     ;; if deleting dirty cache entries...
 	     (t (remhash (cons arg reverse) cache)))))
        cache))
@@ -1326,8 +1336,8 @@ PREFIX is a prefix of STR."
 	   (cond
 	    ;; if updating dirty cache entries...
 	    ((eq (dictree-cache-update-policy dict) 'synchronize)
-	     (dictree--synchronize-query-cache
-	      dict cache cache-entry arg reverse key newdata deleted))
+	     (dictree--synchronize-regexp-cache
+	      dict cache-entry arg reverse key newdata deleted))
 	    ;; if deleting dirty cache entries...
 	    (t (remhash (cons arg reverse) cache)))))
        cache))
@@ -1345,8 +1355,8 @@ PREFIX is a prefix of STR."
 	   (cond
 	    ;; if updating dirty cache entries...
 	    ((eq (dictree-cache-update-policy dict) 'synchronize)
-	     (dictree--synchronize-ranked-query-cache
-	      dict cache cache-entry arg reverse key newdata deleted))
+	     (dictree--synchronize-ranked-regexp-cache
+	      dict cache-entry arg reverse key newdata deleted))
 	    ;; if deleting dirty cache entries...
 	    (t (remhash (cons arg reverse) cache)))))
        cache))
@@ -1354,9 +1364,9 @@ PREFIX is a prefix of STR."
 
 
 
-(defun dictree--synchronize-query-cache
-  (dict cache cache-entry arg reverse key newdata deleted)
-  ;; Synchronize DICT's query CACHE CACHE-ENTRY for ARG and REVERSE, for
+(defun dictree--synchronize-completion-cache
+  (dict cache-entry arg reverse key newdata deleted)
+  ;; Synchronize DICT's completion CACHE-ENTRY for ARG and REVERSE, for
   ;; a KEY whose data was either updated to NEWDATA or DELETED.
   (let* ((completions (dictree--cache-results cache-entry))
 	 (maxnum (dictree--cache-maxnum cache-entry))
@@ -1392,14 +1402,15 @@ PREFIX is a prefix of STR."
 
 
 
-(defun dictree--synchronize-ranked-query-cache
-  (dict cache cache-entry arg reverse key newdata deleted)
-  ;; Synchronize DICT's ranked query CACHE CACHE-ENTRY for ARG and
+(defun dictree--synchronize-ranked-completion-cache
+  (dict cache-entry arg reverse key newdata deleted)
+  ;; Synchronize DICT's ranked completion CACHE-ENTRY for ARG and
   ;; REVERSE, for a KEY whose data was either updated to NEWDATA or
   ;; DELETED.
   (let* ((completions (dictree--cache-results cache-entry))
 	 (maxnum (dictree--cache-maxnum cache-entry))
-	 (cmpl (assoc key completions)))
+	 (cmpl (assoc key completions))
+	 (cache (dictree--complete-ranked-cache dict)))
     ;; if key was...
     (cond
      ;; deleted and in cached result: remove cache entry and re-run the
@@ -1426,6 +1437,122 @@ PREFIX is a prefix of STR."
       (when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
       (dictree--cache-set-completions
        cache-entry (sort completions (dictree-rankfun dict)))
+      (when (equal key (car (last completions)))
+	(remhash (cons arg reverse) cache)
+	(dictree-complete dict arg 'ranked maxnum reverse)))
+     ;; deleted and not in cached result: requires no action
+     )))
+
+
+(defun dictree--synchronize-regexp-cache
+  (dict cache-entry arg reverse key newdata deleted)
+  ;; Synchronize DICT's completion CACHE-ENTRY for ARG and REVERSE, for
+  ;; a KEY whose data was either updated to NEWDATA or DELETED.
+  (let* ((completions (dictree--cache-results cache-entry))
+	 (maxnum (dictree--cache-maxnum cache-entry))
+	 group-data
+	 (cmpl (catch 'found
+		 (dolist (c completions)
+		   (if (and (listp (car c))
+			    (or (stringp (caar c))
+				(vectorp (caar c))
+				(listp (caar c))))
+		       (when (equal key (caar c)) (throw 'found c))
+		     (when (equal key (car c)) (throw 'found c)))))))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the
+     ;; same completion to update the cache
+     ((and deleted cmpl)
+      (remhash (cons arg reverse) (dictree-complete-cache dict))
+      (dictree-regexp-search dict arg nil maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion
+     ;; list, retaining only the first maxnum
+     ((and (not deleted) (not cmpl))
+      (save-match-data
+	(set-match-data nil)
+	(tNFA-regexp-match arg key
+			   :test (dictree--comparison-function dict))
+	(when (setq group-data (nthcdr 2 (match-data)))
+	  (setq key (cons key group-data))))
+      (dictree--cache-set-completions
+       cache-entry
+       (dictree--merge
+	(list (cons key newdata)) completions
+	`(lambda (a b)
+	   (,(trie-construct-sortfun (dictree-comparison-function dict))
+	    ,(if group-data '(caar a) '(car a))
+	    ,(if group-data '(caar b) '(car b))))
+	(when (dictree--meta-dict-p dict)
+	  (dictree--meta-dict-combfun dict))
+	maxnum)))
+     ;; modified and in the cached result: update the associated data if
+     ;; dict is a meta-dictionary (this is done automatically for a
+     ;; normal dict)
+     ((and (not deleted) cmpl (dictree--meta-dict-p dict))
+      (setcdr cmpl newdata))
+     ;; deleted and not in cached result: requires no action
+     )))
+
+
+
+(defun dictree--synchronize-ranked-regexp-cache
+  (dict cache-entry arg reverse key newdata deleted)
+  ;; Synchronize DICT's ranked regexp CACHE-ENTRY for ARG and REVERSE,
+  ;; for a KEY whose data was either updated to NEWDATA or DELETED.
+  (let ((completions (dictree--cache-results cache-entry))
+	(maxnum (dictree--cache-maxnum cache-entry))
+	(cache (dictree--regexp-ranked-cache dict))
+	cmpl group-data)
+    (setq group-data (and (listp (caar completions))
+			  (or (stringp (caar (car completions)))
+			      (vectorp (caar (car completions)))
+			      (listp (caar (car completions))))))
+    (setq cmpl
+	  (catch 'found
+	    (dolist (c completions)
+	      (if group-data
+		  (when (equal key (caar c)) (throw 'found c))
+		(when (equal key (car c)) (throw 'found c))))))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the
+     ;; same query to update the cache
+     ((and deleted cmpl)
+      (remhash (cons arg reverse) cache)
+      (dictree-regexp-search dict arg 'ranked maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion
+     ;; list, retaining only the first maxnum
+     ((and (not deleted) (not cmpl))
+      (save-match-data
+	(set-match-data nil)
+	(tNFA-regexp-match arg key
+			   :test (dictree--comparison-function dict))
+	(when (setq group-data (nthcdr 2 (match-data)))
+	  (setq key (cons key group-data))))
+      (dictree--cache-set-completions
+       cache-entry
+       (dictree--merge
+	(list (cons key newdata)) completions
+	(dictree-rankfun dict)
+	(when (dictree--meta-dict-p dict)
+	  (dictree--meta-dict-combfun dict))
+	maxnum)))
+     ;; modified and in the cached result: update the associated data if
+     ;; dict is a meta-dictionary (this is done automatically for a
+     ;; normal dict), re-sort, and if key is now at end of list re-run
+     ;; the same query to update the cache
+     ((and (not deleted) cmpl)
+      (when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
+      (dictree--cache-set-completions
+       cache-entry
+       (sort completions
+	     (if group-data
+		 `(lambda (a b)
+		    (,(dictree-rankfun dict)
+		     (cons (caar a) (cdr a))
+		     (cons (caar b) (cdr b))))
+	       (dictree-rankfun dict))))
       (when (equal key (car (last completions)))
 	(remhash (cons arg reverse) cache)
 	(dictree-complete dict arg 'ranked maxnum reverse)))
