@@ -699,7 +699,7 @@ specifying the corresponding cache thresholds.
 CACHE-UPDATE-POLICY should be a symbol ('synchronize or 'delete),
 which determines how the caches are updated when data is inserted
 or deleted. The former updates tainted cache entries, which makes
-queries faster but insertion and deleteion slower, whereas the
+queries faster but insertion and deletion slower, whereas the
 latter deletes any tainted cache entries, which makes queries
 slower but insertion and deletion faster.
 
@@ -860,7 +860,7 @@ in DICTIONARY-LIST.
 COMBINE-FUNCTION is used to combine data from different
 dictionaries. It is passed two pieces of data, each an
 association of the same key, but in different dictionaries. It
-should return a combined data.
+should return a combined datum.
 
 The other arguments are as for `dictree-create'. Note that
 caching is only possible if NAME is supplied, otherwise the
@@ -2391,7 +2391,7 @@ filter function returns nil, the match is not included in the
 results, and does not count towards MAXNUM.
 
 RESULTFUN defines a function used to process results before
-adding them to the final result list. If specified, t should
+adding them to the final result list. If specified, it should
 accept two arguments: a key and its associated data. It's return
 value is what gets added to the final result list, instead of the
 default key-data cons cell."
