@@ -2,10 +2,10 @@
 ;;; dict-tree.el --- dictionary data structure package
 
 
-;; Copyright (C) 2004-2010 Toby Cubitt
+;; Copyright (C) 2004-2011 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.12.4
+;; Version: 0.12.5
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -52,6 +52,9 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.12.5
+;; * fixed default value handling in `read-dict'
 ;;
 ;; Version 0.12.4
 ;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
@@ -3536,7 +3539,9 @@ extension, suitable for passing to `load-library'."
 	(void-variable nil))
       (eval (intern-soft dictname)))
      ;; if user selected an unloaded dictionary, return dict name
-     (allow-unloaded dictname)
+     ((and allow-unloaded (stringp dictname)) dictname)
+     ;; if DEFAULT was specified, return that
+     (default default)
      ;; should never get here!
      (t (error "Unknown error reading dictionary")))
     ))
@@ -3602,7 +3607,7 @@ extension, suitable for passing to `load-library'."
    ))
 
 
-(ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun))
+;(ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun))
 
 (defadvice edebug-prin1
   (around dictree activate compile preactivate)
@@ -3614,7 +3619,7 @@ extension, suitable for passing to `load-library'."
     ad-do-it)))
 
 
-(ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape))
+;(ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape))
 
 (defadvice edebug-prin1-to-string
   (around dictree activate compile preactivate)
