@@ -3204,7 +3204,7 @@ is the prefix argument."
   "Populate dictionary DICT from the key list in file FILE.
 
 Each line of FILE should contain a key, either a string
-\(delimeted by \"\), a vector, or a list. (Use the escape
+\(delimited by \"\), a vector, or a list. (Use the escape
 sequence \\\" to include a \" in a string.) If a line does not
 contain a key, it is silently ignored.
 
