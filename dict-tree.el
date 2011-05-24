@@ -3607,7 +3607,8 @@ extension, suitable for passing to `load-library'."
    ))
 
 
-;(ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun))
+(when (fboundp 'ad-define-subr-args)
+  (ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun)))
 
 (defadvice edebug-prin1
   (around dictree activate compile preactivate)
@@ -3619,7 +3620,8 @@ extension, suitable for passing to `load-library'."
     ad-do-it)))
 
 
-;(ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape))
+(when (fboundp 'ad-define-subr-args)
+  (ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape)))
 
 (defadvice edebug-prin1-to-string
   (around dictree activate compile preactivate)
