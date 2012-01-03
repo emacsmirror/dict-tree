@@ -2,10 +2,10 @@
 ;;; dict-tree.el --- dictionary data structure package
 
 
-;; Copyright (C) 2004-2011 Toby Cubitt
+;; Copyright (C) 2004-2012 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.12.5
+;; Version: 0.12.6
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -52,6 +52,9 @@
 
 
 ;;; Change log:
+;;
+;; Version 0.12.6
+;; * replaced obsolete `interactive-p' with `called-interactively-p'
 ;;
 ;; Version 0.12.5
 ;; * fixed default value handling in `read-dict'
@@ -1573,7 +1576,7 @@ PREFIX is a prefix of STR."
 		      dictree-regexp-ranked-cache))
     (when (funcall cachefun dict)
       (clrhash (funcall cachefun dict))))
-  (when (interactive-p)
+  (when (called-interactively-p 'interactive)
     (message "Cleared caches for dictionary %s" (dictree-name dict))))
 
 
@@ -1903,7 +1906,7 @@ Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
   (let ((count 0))
     (dictree-mapc (lambda (&rest dummy) (incf count)) dict)
-    (when (interactive-p)
+    (when (called-interactively-p 'interactive)
       (message "Dictionary %s contains %d entries"
 	       (dictree--name dict) count))
     count))
@@ -2603,7 +2606,7 @@ and OVERWRITE is the prefix argument."
 				     nil "")
 		     current-prefix-arg))
 
-  (if (and (interactive-p) (string= filename ""))
+  (if (and (called-interactively-p 'any) (string= filename ""))
       (progn
 	(message "Dictionary %s NOT written" (dictree-name dict))
 	nil)  ; indicate dictionary wasn't written
@@ -2710,7 +2713,7 @@ asked whether they wish to continue after a failed save."
   (interactive "P")
 
   ;; sort out arguments
-  (when (and (interactive-p) dict) (setq dict nil force t))
+  (when (and (called-interactively-p 'any) dict) (setq dict nil force t))
   (when (dictree-p dict) (setq dict (list dict)))
 
   ;; For each dictionary in list / each loaded dictionary, check if
@@ -2733,7 +2736,7 @@ asked whether they wish to continue after a failed save."
 
     ;; prompt if dictionary saving failed
     (if save-failures
-	(if (or (interactive-p) no-fail-query)
+	(if (or (called-interactively-p 'any) no-fail-query)
 	    (progn
 	      (message
 	       (concat
@@ -2770,7 +2773,7 @@ Interactively, FILE is read from the mini-buffer."
     (if (not (load file t))
 	;; if loading failed, throw error interactively, return nil
 	;; non-interactively
-	(if (interactive-p)
+	(if (called-interactively-p 'any)
 	    (error "Cannot open dictionary file: %s" file)
 	  nil)
 
@@ -2781,7 +2784,7 @@ Interactively, FILE is read from the mini-buffer."
 	(if (not (dictree-p dict))
 	    ;; if loading failed, throw error interactively, return nil
 	    ;; non-interactively
-	    (if (interactive-p)
+	    (if (called-interactively-p 'any)
 		(error "Error loading dictionary file: %s" file)
 	      nil)
 
@@ -3231,7 +3234,7 @@ are created when using a trie that is not self-balancing, see
 		     (read-file-name "File to populate from: "
 				     nil "" t)))
 
-  (if (and (interactive-p) (string= file ""))
+  (if (and (called-interactively-p 'any) (string= file ""))
       (message "No file specified; dictionary %s NOT populated"
 	       (dictree-name dict))
 
@@ -3446,7 +3449,7 @@ OVERWRITE is the prefix argument, and TYPE is always 'string."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to dump to: " nil "")))
 
-  (if (and (interactive-p) (string= filename ""))
+  (if (and (called-interactively-p 'any) (string= filename ""))
       (message "Dictionary %s NOT dumped" (dictree-name dict))
 
     ;; check if file exists, and prompt to overwrite it if necessary
