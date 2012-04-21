@@ -5,7 +5,7 @@
 ;; Copyright (C) 2004-2012 Toby Cubitt
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.12.6
+;; Version: 0.12.7
 ;; Keywords: dictionary, tree
 ;; URL: http://www.dr-qubit.org/emacs.php
 
@@ -52,6 +52,13 @@
 
 
 ;;; Change log:
+;; Version 0.12.7
+;; * create defstruct copier functions for dict-trees and
+;;   meta-dict-trees
+;; * don't transform hash tables to alists when writing dictionaries if
+;;   running in an Emacs version that supports print-readable hash tables
+;; * simplified `dictree-write', `dictree--write-dict-code' and
+;;   `dictree--write-meta-dict-code'
 ;;
 ;; Version 0.12.6
 ;; * replaced obsolete `interactive-p' with `called-interactively-p'
@@ -487,7 +494,7 @@ If START or END is negative, it counts from the end."
 		     nil))
 		  (metadict-list nil)
 		  ))
-   (:copier nil))
+   (:copier dictree--copy))
   name filename autosave modified
   comparison-function insert-function insfun rank-function rankfun
   cache-policy cache-update-policy
@@ -553,7 +560,7 @@ If START or END is negative, it counts from the end."
 		       (make-hash-table :test 'equal)
 		     nil))
 		  ))
-   (:copier nil))
+   (:copier dictree--meta-dict-copy))
   name filename autosave modified
   combine-function combfun
   cache-policy cache-update-policy
@@ -2561,7 +2568,7 @@ both forms. See `dictree-write'.
 Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
 
-  (let* ((filename (dictree-filename dict)))
+  (let ((filename (dictree-filename dict)))
 
     ;; if dictionary has no associated file, prompt for one
     (unless (and filename (> (length filename) 0))
@@ -2581,8 +2588,10 @@ Interactively, DICT is read from the mini-buffer."
 
 
 
-(defun dictree-write (dict filename &optional overwrite compilation)
+(defun dictree-write (dict &optional filename overwrite compilation)
   "Write dictionary DICT to file FILENAME.
+Defaults to dictionary's current filename if FILENAME is not
+specified (like `dictree-save').
 
 If optional argument OVERWRITE is non-nil, no confirmation will
 be asked for before overwriting an existing file.
@@ -2605,16 +2614,18 @@ and OVERWRITE is the prefix argument."
 		     (read-file-name "Write dictionary to file: "
 				     nil "")
 		     current-prefix-arg))
-
-  (if (and (called-interactively-p 'any) (string= filename ""))
+  ;; default to DICT's current file, if any
+  (when (or (null filename)
+	    (and (called-interactively-p 'any) (string= filename "")))
+    (setq filename (dictree-filename dict)))
+  (if (null filename)
       (progn
 	(message "Dictionary %s NOT written" (dictree-name dict))
 	nil)  ; indicate dictionary wasn't written
 
     (let (dictname buff tmpfile)
-      ;; add .el(c) extension to the filename if not already there
+      ;; remove any .el(c) extension from filename
       (cond
-       ;; remove .el(c) extension from filename
        ((and (> (length filename) 3)
 	     (string= (substring filename -3) ".el"))
 	(setq filename (substring filename 0 -3)))
@@ -2666,7 +2677,8 @@ and OVERWRITE is the prefix argument."
 		    (rename-file (concat tmpfile ".elc")
 				 (concat filename ".elc") t)
 		  (error ""))))
-	  (error "Error saving. Dictionary %s NOT saved" dictname))
+	  (error "Error writing dictionary. Dictionary %s NOT saved"
+		 dictname))
 
 	;; if writing to a different name, unload dictionary under old
 	;; name and reload it under new one
@@ -2907,177 +2919,114 @@ is the prefix argument."
 
 
     ;; --- convert caches for writing to file ---
-    ;; convert lookup cache hash table to alist, if it exists
-    (when (dictree--lookup-cache-threshold dict)
-      (maphash
-       (lambda (key val)
-	 (push
-	  (cons key
-		(cons (mapcar 'car (dictree--cache-results val))
-		      (dictree--cache-maxnum val)))
-	  lookup-alist))
-       (dictree--lookup-cache dict))
-      ;; generate code to reconstruct the lookup hash table
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(let ((lookup-cache (make-hash-table :test 'equal))\n"
-	     "      (trie (dictree--trie " dictname ")))\n"
-	     "  (mapc\n"
-	     "   (lambda (entry)\n"
-	     "     (puthash\n"
-	     "      (car entry)\n"
-	     "      (dictree--cache-create\n"
-	     "       (mapcar\n"
-	     "        (lambda (key)\n"
-	     "          (cons key (trie-member trie key)))\n"
-	     "        (dictree--cache-results (cdr entry)))\n"
-	     "       (dictree--cache-maxnum (cdr entry)))\n"
-	     "      lookup-cache))\n"
-	     "   (dictree--lookup-cache " dictname "))\n"
-	     "  (setf (dictree--lookup-cache " dictname ")\n"
-	     "        lookup-cache))\n"
-	     )))
+    ;; hash tables have no read syntax in older Emacsen, so we convert
+    ;; them to alists for writing
+    (unless (featurep 'hashtable-print-readable)
+      ;; convert lookup cache hash table to alist, if it exists
+      (when (dictree--lookup-cache-threshold dict)
+	(maphash
+	 (lambda (key val)
+	   (push
+	    (cons key
+		  (cons (mapcar 'car (dictree--cache-results val))
+			(dictree--cache-maxnum val)))
+	    lookup-alist))
+	 (dictree--lookup-cache dict))
+	;; generate code to reconstruct the lookup hash table
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((lookup-cache (make-hash-table :test 'equal))\n"
+	       "      (trie (dictree--trie " dictname ")))\n"
+	       "  (mapc\n"
+	       "   (lambda (entry)\n"
+	       "     (puthash\n"
+	       "      (car entry)\n"
+	       "      (dictree--cache-create\n"
+	       "       (mapcar\n"
+	       "        (lambda (key)\n"
+	       "          (cons key (trie-member trie key)))\n"
+	       "        (dictree--cache-results (cdr entry)))\n"
+	       "       (dictree--cache-maxnum (cdr entry)))\n"
+	       "      lookup-cache))\n"
+	       "   (dictree--lookup-cache " dictname "))\n"
+	       "  (setf (dictree--lookup-cache " dictname ")\n"
+	       "        lookup-cache))\n")))
 
-    ;; convert query caches, if they exist
-    (dolist (cache-details
-	     '((dictree--complete-cache-threshold
-		complete-alist dictree--complete-cache)
-	       (dictree--complete-ranked-cache-threshold
-		complete-ranked-alist dictree--complete-ranked-cache)
-	       (dictree--regexp-cache-threshold
-		regexp-alist dictree--regexp-cache)
-	       (dictree--regexp-ranked-cache-threshold
-		regexp-ranked-alist dictree--regexp-ranked-cache)))
-      (when (funcall (nth 0 cache-details) dict)
-	;; convert hash table to alist
-	(set (nth 1 cache-details)
-	     (let (alist)
-	       (maphash
-		(lambda (key val)
-		  (push
-		   (cons key
-			 (cons
-			  (mapcar 'car (dictree--cache-results val))
-			  (dictree--cache-maxnum val)))
-		   alist))
-		(funcall (nth 2 cache-details) dict))
-	       alist))
-	;; generate code to reconstruct hash table from alist
-	(setq
-	 hashcode
-	 (concat
-	  hashcode
-	  "(let ((cache (make-hash-table :test 'equal))\n"
-	  "      (trie (dictree--trie " dictname ")))\n"
-	  "  (mapc\n"
-	  "   (lambda (entry)\n"
-	  "     (puthash\n"
-	  "      (car entry)\n"
-	  "      (dictree--cache-create\n"
-	  "       (mapcar\n"
-	  "        (lambda (key)\n"
-	  "          (cons key\n"
-	  "                (trie-member\n"
-	  "                 trie (if (stringp key) key (car key)))))\n"
-	  "        (dictree--cache-results (cdr entry)))\n"
-	  "       (dictree--cache-maxnum (cdr entry)))\n"
-	  "      cache))\n"
-	  "   (" (symbol-name (nth 2 cache-details)) " " dictname "))\n"
-	  "  (setf (" (symbol-name (nth 2 cache-details)) " "
-	            dictname ")\n"
-	  "        cache))\n"
-	  ))
-	))
+      ;; convert query caches, if they exist
+      (dolist (cache-details
+	       '((dictree--complete-cache-threshold
+		  complete-alist dictree--complete-cache)
+		 (dictree--complete-ranked-cache-threshold
+		  complete-ranked-alist dictree--complete-ranked-cache)
+		 (dictree--regexp-cache-threshold
+		  regexp-alist dictree--regexp-cache)
+		 (dictree--regexp-ranked-cache-threshold
+		  regexp-ranked-alist dictree--regexp-ranked-cache)))
+	(when (funcall (nth 0 cache-details) dict)
+	  ;; convert hash table to alist
+	  (set (nth 1 cache-details)
+	       (let (alist)
+		 (maphash
+		  (lambda (key val)
+		    (push
+		     (cons key
+			   (cons
+			    (mapcar 'car (dictree--cache-results val))
+			    (dictree--cache-maxnum val)))
+		     alist))
+		  (funcall (nth 2 cache-details) dict))
+		 alist))
+	  ;; generate code to reconstruct hash table from alist
+	  (setq
+	   hashcode
+	   (concat
+	    hashcode
+	    "(let ((cache (make-hash-table :test 'equal))\n"
+	    "      (trie (dictree--trie " dictname ")))\n"
+	    "  (mapc\n"
+	    "   (lambda (entry)\n"
+	    "     (puthash\n"
+	    "      (car entry)\n"
+	    "      (dictree--cache-create\n"
+	    "       (mapcar\n"
+	    "        (lambda (key)\n"
+	    "          (cons key\n"
+	    "                (trie-member\n"
+	    "                 trie (if (stringp key) key (car key)))))\n"
+	    "        (dictree--cache-results (cdr entry)))\n"
+	    "       (dictree--cache-maxnum (cdr entry)))\n"
+	    "      cache))\n"
+	    "   (" (symbol-name (nth 2 cache-details)) " " dictname "))\n"
+	    "  (setf (" (symbol-name (nth 2 cache-details)) " "
+	              dictname ")\n"
+	    "        cache))\n")))))
 
 
     ;; --- write to file ---
     ;; generate the structure to save
-    (setq tmpdict (dictree-create))
+    (setq tmpdict (dictree--copy dict))
     (setf (dictree--trie tmpdict) tmptrie
 	  (dictree--name tmpdict) dictname
 	  (dictree--filename tmpdict) filename
-	  (dictree--autosave tmpdict) (dictree--autosave dict)
 	  (dictree--modified tmpdict) nil
-	  (dictree--comparison-function tmpdict)
-	    (dictree--comparison-function dict)
-	  (dictree--insert-function tmpdict)
-	    (dictree--insert-function dict)
-	  (dictree--insfun tmpdict)
-	    (dictree--insfun dict)
-	  (dictree--rank-function tmpdict)
-	    (dictree--rank-function dict)
-	  (dictree--rankfun tmpdict)
-	    (dictree--rankfun dict)
-	  (dictree--cache-policy tmpdict)
-	    (dictree--cache-policy dict)
-	  (dictree--cache-update-policy tmpdict)
-	    (dictree--cache-update-policy dict)
-	  (dictree--lookup-cache tmpdict)
-	    lookup-alist
-	  (dictree--lookup-cache-threshold tmpdict)
-	    (dictree--lookup-cache-threshold dict)
-	  (dictree--complete-cache tmpdict)
-	    complete-alist
-	  (dictree--complete-cache-threshold tmpdict)
-	    (dictree--complete-cache-threshold dict)
-	  (dictree--complete-ranked-cache tmpdict)
-	    complete-ranked-alist
-	  (dictree--complete-ranked-cache-threshold tmpdict)
-	    (dictree--complete-ranked-cache-threshold dict)
-	  (dictree--regexp-cache tmpdict)
-	    regexp-alist
-	  (dictree--regexp-cache-threshold tmpdict)
-	    (dictree--regexp-cache-threshold dict)
-	  (dictree--regexp-ranked-cache tmpdict)
-	    regexp-ranked-alist
-	  (dictree--regexp-ranked-cache-threshold tmpdict)
-	    (dictree--regexp-ranked-cache-threshold dict)
-	  (dictree--key-savefun tmpdict)
-	    (dictree--key-savefun dict)
-	  (dictree--key-loadfun tmpdict)
-	    (dictree--key-loadfun dict)
-	  (dictree--data-savefun tmpdict)
-	    (dictree--data-savefun dict)
-	  (dictree--data-loadfun tmpdict)
-	    (dictree--data-loadfun dict)
-	  (dictree--plist-savefun tmpdict)
-	    (dictree--plist-savefun dict)
-	  (dictree--plist-loadfun tmpdict)
-	    (dictree--plist-loadfun dict)
 	  (dictree--meta-dict-list tmpdict) nil)
+    (unless (featurep 'hashtable-print-readable)
+      (setf (dictree--lookup-cache tmpdict) lookup-alist
+	    (dictree--complete-cache tmpdict) complete-alist
+	    (dictree--complete-ranked-cache tmpdict) complete-ranked-alist
+	    (dictree--regexp-cache tmpdict) regexp-alist
+	    (dictree--regexp-ranked-cache tmpdict) regexp-ranked-alist))
 
     ;; write lisp code that generates the dictionary object
-    (let ((restore-print-circle print-circle)
-	  (restore-print-level print-level)
-	  (restore-print-length print-length))
-      (setq print-circle nil
-	    print-level nil
-	    print-length nil)
+    (let ((print-circle t) (print-level nil) (print-length nil))
       (insert "(eval-when-compile (require 'cl))\n")
       (insert "(require 'dict-tree)\n")
-      (insert "(defvar " dictname " nil \"Dictionary "
-	      dictname ".\")\n")
-      (unwind-protect
-	  (progn
-	    ;; transform trie to print form
-	    (trie-transform-for-print (dictree--trie tmpdict))
-	    (insert "(setq " dictname
-		    " '" (prin1-to-string tmpdict) ")\n"))
-	;; if dictionary doesn't use any custom save functions,
-	;; tmpdict's trie is identical to original dict, so transform it
-	;; back to usable form
-	(unless (or (dictree--data-savefun dict)
-		    (dictree--plist-savefun dict))
-	  (trie-transform-from-read (dictree--trie tmpdict))))
-      (insert "(trie-transform-from-read (dictree--trie "
-	      dictname "))\n")
+      (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
+      (insert "(setq " dictname " " (prin1-to-string tmpdict) ")\n")
       (when hashcode (insert hashcode))
       (insert "(unless (memq " dictname " dictree-loaded-list)\n"
-	      "  (push " dictname " dictree-loaded-list))\n")
-      (setq print-circle restore-print-circle
-	    print-level restore-print-level
-	    print-length restore-print-length))))
+	      "  (push " dictname " dictree-loaded-list))\n"))))
 
 
 
@@ -3089,111 +3038,100 @@ is the prefix argument."
 	regexp-alist regexp-ranked-alist)
 
     ;; --- convert caches for writing to file ---
-    ;; convert lookup cache hash table to an alist, if it exists
-    (when (dictree--meta-dict-lookup-cache-threshold dict)
-      (maphash (lambda (key val)
-		 (push (cons key (mapcar 'car val)) lookup-alist))
-	       (dictree--meta-dict-lookup-cache dict))
-      ;; generate code to reconstruct the lookup hash table
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(let ((cache (make-hash-table :test 'equal)))\n"
-	     "  (mapc (lambda (entry)\n"
-	     "    (puthash (car entry) (cdr entry) cache))\n"
-	     "    (dictree--meta-dict-lookup-cache " dictname "))\n"
-	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
-	     "        cache))\n")))
+    ;; hash tables have no read syntax in older Emacsen, so we convert
+    ;; them to alists for writing
+    (unless (featurep 'hashtable-print-readable)
+      ;; convert lookup cache hash table to an alist, if it exists
+      (when (dictree--meta-dict-lookup-cache-threshold dict)
+	(maphash (lambda (key val)
+		   (push (cons key (mapcar 'car val)) lookup-alist))
+		 (dictree--meta-dict-lookup-cache dict))
+	;; generate code to reconstruct the lookup hash table
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((cache (make-hash-table :test 'equal)))\n"
+	       "  (mapc (lambda (entry)\n"
+	       "    (puthash (car entry) (cdr entry) cache))\n"
+	       "    (dictree--meta-dict-lookup-cache " dictname "))\n"
+	       "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
+	       "        cache))\n")))
 
-    ;; convert query caches, if they exist
-    (dolist (cache-details
-	     '((dictree--meta-dict-complete-cache-threshold
-		complete-alist
-		dictree--meta-dict-complete-cache)
-	       (dictree--meta-dict-complete-ranked-cache-threshold
-		complete-ranked-alist
-		dictree--meta-dict-complete-ranked-cache)
-	       (dictree--meta-dict-regexp-cache-threshold
-		regexp-alist
-		dictree--meta-dict-regexp-cache)
-	       (dictree--meta-dict-regexp-ranked-cache-threshold
-		regexp-ranked-alist
-		dictree--meta-dict-regexp-ranked-cache)))
-      (when (funcall (nth 0 cache-details) dict)
-	;; convert hash table to alist
-	(set (nth 1 cache-details)
-	     (let (alist)
-	       (maphash
-		(lambda (key val) (push (cons key val) alist))
-		(funcall (nth 2 cache-details) dict))
-	       alist))
-	;; generate code to reconstruct hash table from alist
-	(setq
-	 hashcode
-	 (concat
-	  hashcode
-	  "(let ((cache (make-hash-table :test 'equal)))\n"
-	  "  (mapc (lambda (entry)\n"
-	  "    (puthash (car entry) (cdr entry) cache))\n"
-	  "    (" (symbol-name (nth 2 cache-details)) " "
-	          dictname "))\n"
-	  "  (setf (" (symbol-name (nth 2 cache-details)) " "
-	              dictname ")\n"
-	  "        cache))\n"))))
+      ;; convert query caches, if they exist
+      (dolist (cache-details
+	       '((dictree--meta-dict-complete-cache-threshold
+		  complete-alist
+		  dictree--meta-dict-complete-cache)
+		 (dictree--meta-dict-complete-ranked-cache-threshold
+		  complete-ranked-alist
+		  dictree--meta-dict-complete-ranked-cache)
+		 (dictree--meta-dict-regexp-cache-threshold
+		  regexp-alist
+		  dictree--meta-dict-regexp-cache)
+		 (dictree--meta-dict-regexp-ranked-cache-threshold
+		  regexp-ranked-alist
+		  dictree--meta-dict-regexp-ranked-cache)))
+	(when (funcall (nth 0 cache-details) dict)
+	  ;; convert hash table to alist
+	  (set (nth 1 cache-details)
+	       (let (alist)
+		 (maphash
+		  (lambda (key val) (push (cons key val) alist))
+		  (funcall (nth 2 cache-details) dict))
+		 alist))
+	  ;; generate code to reconstruct hash table from alist
+	  (setq
+	   hashcode
+	   (concat
+	    hashcode
+	    "(let ((cache (make-hash-table :test 'equal)))\n"
+	    "  (mapc (lambda (entry)\n"
+	    "    (puthash (car entry) (cdr entry) cache))\n"
+	    "    (" (symbol-name (nth 2 cache-details)) " "
+	            dictname "))\n"
+	    "  (setf (" (symbol-name (nth 2 cache-details)) " "
+	                dictname ")\n"
+	    "        cache))\n")))))
 
 
     ;; --- write to file ---
     ;; generate the structure to save
-    (setq tmpdict (dictree-meta-dict-create nil))
+    (setq tmpdict (dictree--meta-dict-copy dict))
     (setf (dictree--meta-dict-name tmpdict) dictname
 	  (dictree--meta-dict-filename tmpdict) filename
-	  (dictree--meta-dict-autosave tmpdict)
-	    (dictree--meta-dict-autosave dict)
 	  (dictree--meta-dict-modified tmpdict) nil
-	  (dictree--meta-dict-combine-function tmpdict)
-	    (dictree--meta-dict-combine-function dict)
-	  (dictree--meta-dict-combfun tmpdict)
-	    (dictree--meta-dict-combfun dict)
-	  (dictree--meta-dict-cache-policy tmpdict)
-	    (dictree--meta-dict-cache-policy dict)
-	  (dictree--meta-dict-cache-update-policy tmpdict)
-	    (dictree--meta-dict-cache-update-policy dict)
-	  (dictree--meta-dict-lookup-cache tmpdict)
-	    lookup-alist
-	  (dictree--meta-dict-lookup-cache-threshold tmpdict)
-	    (dictree--meta-dict-lookup-cache-threshold dict)
-	  (dictree--meta-dict-complete-cache tmpdict)
-	    complete-alist
-	  (dictree--meta-dict-complete-cache-threshold tmpdict)
-	    (dictree--meta-dict-complete-cache-threshold dict)
-	  (dictree--meta-dict-complete-ranked-cache tmpdict)
-	    complete-ranked-alist
-	  (dictree--meta-dict-complete-ranked-cache-threshold tmpdict)
-	    (dictree--meta-dict-complete-ranked-cache-threshold dict)
+	  (dictree--meta-dict-meta-dict-list tmpdict) nil
 	  (dictree--meta-dict-dictlist tmpdict)
 	    (mapcar (lambda (dic) (intern (dictree-name dic)))
-		    (dictree--meta-dict-dictlist dict))
-	  (dictree--meta-dict-meta-dict-list tmpdict) nil)
+		    (dictree--meta-dict-dictlist dict)))
+    (unless (featurep 'hashtable-print-readable)
+      (setf (dictree--meta-dict-lookup-cache tmpdict) lookup-alist
+	    (dictree--meta-dict-complete-cache tmpdict) complete-alist
+	    (dictree--meta-dict-complete-ranked-cache tmpdict)
+	      complete-ranked-alist
+	    (dictree--meta-dict-regexp-cache tmpdict) regexp-alist
+	    (dictree--meta-dict-regexp-ranked-cache tmpdict)
+	      regexp-ranked-alist))
 
     ;; write lisp code that generates the dictionary object
-    (insert "(eval-when-compile (require 'cl))\n"
-	    "(require 'dict-tree)\n")
-    (mapc
-     (lambda (dic)
-       (insert "(unless (dictree-load \"" (dictree-filename dic) "\")\n"
-	       "        (error \"Failed to load dictionary \\\""
-	       (dictree-name dic) "\\\" required by meta-dict \\\""
-	       dictname "\\\"\"))\n"))
-     (dictree--meta-dict-dictlist dict))
-    (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n"
-	    "(setq " dictname " '" (prin1-to-string tmpdict) ")\n"
-	    "(setf (dictree--meta-dict-dictlist " dictname ")\n"
-	    "      (mapcar 'eval (dictree--meta-dict-dictlist "
-	                          dictname ")))\n")
-    (when hashcode (insert hashcode))
-    (insert "(unless (memq " dictname " dictree-loaded-list)"
-	    " (push " dictname " dictree-loaded-list))\n")
-    ))
+    (let ((print-circle t) (print-level nil) (print-length nil))
+      (insert "(eval-when-compile (require 'cl))\n"
+	      "(require 'dict-tree)\n")
+      (mapc
+       (lambda (dic)
+	 (insert "(unless (dictree-load \"" (dictree-filename dic) "\")\n"
+		 "        (error \"Failed to load dictionary \\\""
+		 (dictree-name dic) "\\\" required by meta-dict \\\""
+		 dictname "\\\"\"))\n"))
+       (dictree--meta-dict-dictlist dict))
+      (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n"
+	      "(setq " dictname " " (prin1-to-string tmpdict) ")\n"
+	      "(setf (dictree--meta-dict-dictlist " dictname ")\n"
+	      "      (mapcar 'eval (dictree--meta-dict-dictlist "
+	                            dictname ")))\n")
+      (when hashcode (insert hashcode))
+      (insert "(unless (memq " dictname " dictree-loaded-list)"
+	      " (push " dictname " dictree-loaded-list))\n"))))
 
 
 
