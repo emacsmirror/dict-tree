@@ -6,7 +6,9 @@
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
 ;; Version: 0.12.7
-;; Keywords: dictionary, tree
+;; Keywords: extensions, matching, data structures
+;;           trie, tree, dictionary, completion, regexp
+;; Package-Requires: ((trie "0.2.5") (tNFA "0.1.1") (heap "0.3"))
 ;; URL: http://www.dr-qubit.org/emacs.php
 
 
@@ -48,10 +50,12 @@
 ;; `dictree-write', and load from file it using `dictree-load'. Various
 ;; other useful functions are also provided.
 ;;
-;; This package uses the trie package, trie.el.
+;; This package uses the trie package trie.el. the tagged NFA package
+;; tNFA.el, and the heap package heap.el.
 
 
-;;; Change log:
+;;; Change Log:
+;;
 ;; Version 0.12.7
 ;; * create defstruct copier functions for dict-trees and
 ;;   meta-dict-trees
