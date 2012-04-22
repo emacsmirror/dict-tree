@@ -658,7 +658,8 @@ If START or END is negative, it counts from the end."
 ;;; ================================================================
 ;;;    The (mostly) public functions which operate on dictionaries
 
-(defun dictree-create
+;;;###autoload
+(defun make-dictree
   (&optional
    name filename autosave unlisted
    comparison-function insert-function rank-function
@@ -800,8 +801,12 @@ structure. See `trie-create' for details."
     dict))
 
 
+;;;###autoload
+(defalias 'dictree-create 'make-dictree)
 
-(defun* dictree-create-custom
+
+;;;###autoload
+(defun* make-dictree-custom
     (&optional
      name filename autosave unlisted
      &key
@@ -869,8 +874,12 @@ underlying data structure. See `trie-create' for details."
     dict))
 
 
+;;;###autoload
+(defalias 'dictree-create-custom 'make-dictree-custom)
 
-(defun dictree-meta-dict-create
+
+;;;###autoload
+(defun make-dictree-meta-dict
   (dictionary-list
    &optional
    name filename autosave unlisted
@@ -935,8 +944,10 @@ cache-threshold arguments are ignored."
        dictionary-list))
     dict))
 
+(defalias 'dictree-create-meta-dict 'make-dictree-meta-dict)
 
 
+;;;###autoload
 (defun dictree-p (obj)
   "Return t if OBJ is a dictionary tree, nil otherwise."
   (or (dictree--p obj) (dictree--meta-dict-p obj)))
@@ -2774,6 +2785,7 @@ asked whether they wish to continue after a failed save."
 
 
 
+;;;###autoload
 (defun dictree-load (file)
   "Load a dictionary object from file FILE.
 Returns the dictionary if successful, nil otherwise.
@@ -3424,6 +3436,7 @@ OVERWRITE is the prefix argument, and TYPE is always 'string."
   "History list for commands that read a loaded dictionary name.")
 
 
+;;;###autoload
 (defun read-dict
   (prompt &optional default dictlist allow-unloaded allow-unmatched)
   "Read the name of a dictionary with completion, and return it.
