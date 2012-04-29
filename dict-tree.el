@@ -1,4 +1,3 @@
-
 ;;; dict-tree.el --- dictionary data structure package
 
 
@@ -11,52 +10,49 @@
 ;; Package-Requires: ((trie "0.2.5") (tNFA "0.1.1") (heap "0.3"))
 ;; URL: http://www.dr-qubit.org/emacs.php
 
-
 ;; This file is part of Emacs.
 ;;
-;; GNU Emacs is free software: you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License as published by
-;; the Free Software Foundation, either version 3 of the License, or
-;; (at your option) any later version.
+;; GNU Emacs is free software: you can redistribute it and/or modify it under
+;; the terms of the GNU General Public License as published by the Free
+;; Software Foundation, either version 3 of the License, or (at your option)
+;; any later version.
 ;;
-;; GNU Emacs is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; GNU General Public License for more details.
+;; GNU Emacs is distributed in the hope that it will be useful, but WITHOUT
+;; ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+;; FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+;; more details.
 ;;
-;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; You should have received a copy of the GNU General Public License along
+;; with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 
 
 ;;; Commentary:
 ;;
-;; A dictionary is used to store strings, along with arbitrary data
-;; associated with each string. As well as basic data insertion,
-;; manipulation and retrieval, a dictionary can perform prefix searches
-;; on those strings, retrieving all strings with a given prefix in
-;; either alphabetical or any other order (see the `dictree-complete'
-;; and `dictree-complete-ordered' functions), and is able to cache
-;; results in order to speed up those searches. The package also
-;; provides persistent storage of the data structures to files.
+;; A dictionary is used to store strings, along with arbitrary data associated
+;; with each string. As well as basic data insertion, manipulation and
+;; retrieval, a dictionary can perform prefix searches on those strings,
+;; retrieving all strings with a given prefix in either alphabetical or any
+;; other order (see the `dictree-complete' and `dictree-complete-ordered'
+;; functions), and is able to cache results in order to speed up those
+;; searches. The package also provides persistent storage of the data
+;; structures to files.
 ;;
-;; You create a dictionary using `dictree-create', add entries to it
-;; using `dictree-insert', lookup entries using `dictree-lookup', find
-;; completions of sequences using `dictree-complete', find completions
-;; and sort them in any order you speficy using
-;; `dictree-complete-ordered', map over it using `dictree-map' and
-;; `dictree-mapcar', save it to a file using `dictree-save' or
-;; `dictree-write', and load from file it using `dictree-load'. Various
+;; You create a dictionary using `dictree-create', add entries to it using
+;; `dictree-insert', lookup entries using `dictree-lookup', find completions
+;; of sequences using `dictree-complete', find completions and sort them in
+;; any order you speficy using `dictree-complete-ordered', map over it using
+;; `dictree-map' and `dictree-mapcar', save it to a file using `dictree-save'
+;; or `dictree-write', and load from file it using `dictree-load'. Various
 ;; other useful functions are also provided.
 ;;
-;; This package uses the trie package trie.el. the tagged NFA package
-;; tNFA.el, and the heap package heap.el.
+;; This package uses the trie package trie.el. the tagged NFA package tNFA.el,
+;; and the heap package heap.el.
 
 
 ;;; Change Log:
 ;;
 ;; Version 0.12.7
-;; * create defstruct copier functions for dict-trees and
-;;   meta-dict-trees
+;; * create defstruct copier functions for dict-trees and meta-dict-trees
 ;; * don't transform hash tables to alists when writing dictionaries if
 ;;   running in an Emacs version that supports print-readable hash tables
 ;; * simplified `dictree-write', `dictree--write-dict-code' and
@@ -69,17 +65,17 @@
 ;; * fixed default value handling in `read-dict'
 ;;
 ;; Version 0.12.4
-;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil"
-;;   instead of "()"
+;; * minor bug-fix to `dictree--edebug-pretty-print' to print "nil" instead
+;;   of "()"
 ;; * modified `dictree-save-modified' to catch errors when saving
 ;;   dictionaries, and indicate failures via its return value
 ;; * removed `dictree-save-modified' from `kill-emacs-hook' and added it
-;;   instead to `kill-emacs-query-functions', so that dictionary save
-;;   failures don't make it impossible to quit Emacs
-;; * fixed bug in `dictree--merge' that caused it to retain one too many
-;;   list elements for non-null MAXNUM
-;; * fixed `dictree--update-cache', which previously never updated
-;;   cached results for lists of prefixes in `dictree-complete' queries
+;;   instead to `kill-emacs-query-functions', so that dictionary save failures
+;;   don't make it impossible to quit Emacs
+;; * fixed bug in `dictree--merge' that caused it to retain one too many list
+;;   elements for non-null MAXNUM
+;; * fixed `dictree--update-cache', which previously never updated cached
+;;   results for lists of prefixes in `dictree-complete' queries
 ;; * fixed implementation of 'both cache policy
 ;; * fixed bug in `read-dict' preventing completion on dictionary files
 ;;   in `load-path'
@@ -87,10 +83,10 @@
 ;;   `dictree--synchronise-query-cache' and
 ;;   `dictree--synchronise-ranked-query-cache' to
 ;;   `dictree--synchronise-completion-cache' and
-;;   `dictree--synchronise-ranked-completion-cache', and creating
-;;   separate `dictree--synchronise-regexp-cache' and
-;;   `dictree--synchronise-ranked-regep-cache' functions to handle
-;;   regexp query caches
+;;   `dictree--synchronise-ranked-completion-cache', and creating separate
+;;   `dictree--synchronise-regexp-cache' and
+;;   `dictree--synchronise-ranked-regep-cache' functions to handle regexp
+;;   query caches
 ;;
 ;; Version 0.12.3
 ;; * bug-fix in `dictree--edebug-pretty-print'
@@ -105,50 +101,48 @@
 ;; Version 0.12
 ;; * complete rewrite using new trie.el library
 ;;
-;; Note: version 0.11.1 dictionaries not compatible with version 0.12
-;;       and above
+;; Note: version 0.11.1 dictionaries not compatible with version 0.12 and
+;;       above
 ;;
 ;; Version 0.11.1
-;; * set and restore value of `byte-compile-disable-print-circle'
-;;   instead of let-binding it, to avoid warnings when compiling
+;; * set and restore value of `byte-compile-disable-print-circle' instead of
+;;   let-binding it, to avoid warnings when compiling
 ;; * added `dictree-goto-line' macro to work around `goto-line' bug
 ;;
 ;; Version 0.11
 ;; * modified `dictree-write' so that, by default, both compiled and
-;;   uncompiled versions of dictionaries are created when writing
-;;   dictionaries to file
+;;   uncompiled versions of dictionaries are created when writing dictionaries
+;;   to file
 ;; * fixed slow byte-compilation under Emacs 22
 ;;
 ;; Version 0.10.2
 ;; * very minor changes to text of some messages
 ;;
 ;; Version 0.10.1
-;; * added optional DICTLIST argument to `read-dict', to allow
-;;   completion from a restricted set of dictionaries
+;; * added optional DICTLIST argument to `read-dict', to allow completion from
+;;   a restricted set of dictionaries
 ;;
 ;; Version 0.10
 ;; * finally wrote a `dictree-delete' function!
 ;;
 ;; Version 0.9.1
-;; * fixed bug in `dictree-dump-words-to-buffer' (thanks to Dan Pomohaci
-;;   for reporting it)
-;; * replaced "word" with "key" in function arguments and docstrings,
-;;   since keys don't have to be words
-;; * removed "words" from dump functions' names, added TYPE argument in
-;;   line with other functions, and made them non-interactive
-;; * added COMPARE-FUNCTION argument to `dictree-create', which defaults
-;;   to subtraction as before
-;; * `dictree-read-line' reads the keys with `read', and no longer evals
-;;   the data as this fails for simple, useful cases (e.g. constant
-;;   lists)
+;; * fixed bug in `dictree-dump-words-to-buffer' (thanks to Dan Pomohaci for
+;;   reporting it)
+;; * replaced "word" with "key" in function arguments and docstrings, since
+;;   keys don't have to be words
+;; * removed "words" from dump functions' names, added TYPE argument in line
+;;   with other functions, and made them non-interactive
+;; * added COMPARE-FUNCTION argument to `dictree-create', which defaults to
+;;   subtraction as before
+;; * `dictree-read-line' reads the keys with `read', and no longer evals the
+;;   data as this fails for simple, useful cases (e.g. constant lists)
 ;;
 ;; Version 0.9
 ;; * added meta-dictionary functionality
-;; * dictionary data can now be referenced by any sequence type, not
-;;   just strings * removed cl dependency
+;; * dictionary data can now be referenced by any sequence type, not just
+;;   strings * removed cl dependency
 ;;
-;; Note: version 0.8 dictionaries not compatible with version 0.9 and
-;;       above
+;; Note: version 0.8 dictionaries not compatible with version 0.9 and above
 ;;
 ;; Version 0.8.4
 ;; * fixed small bug in `read-dict'
@@ -162,22 +156,21 @@
 ;; * added more commentary
 ;;
 ;; Version 0.8.1
-;; * fixed nasty bug in `dict-map' and `dict-mapcar' caused by dynamic
-;;   scoping
+;; * fixed nasty bug in `dict-map' and `dict-mapcar' caused by dynamic scoping
 ;;
 ;; Version 0.8
 ;; * changed `dict-map(car)' into functions and made them work with
 ;;   lookup-only dicts
 ;; * `dict-insert' now returns the new data value
-;; * rewrote cache data structures: data is now wrapped inside a cons
-;;   cell, so that cache entries can point to it instead of duplicating
-;;   it. This fixes some caching bugs and makes updating cached data
-;;   when inserting words much faster
-;; * dictionaries (but not lookup-only) can now associate two pieces of
-;;   data with each word: normal data, used to rank words returned by
+;; * rewrote cache data structures: data is now wrapped inside a cons cell, so
+;;   that cache entries can point to it instead of duplicating it. This fixes
+;;   some caching bugs and makes updating cached data when inserting words
+;;   much faster
+;; * dictionaries (but not lookup-only) can now associate two pieces of data
+;;   with each word: normal data, used to rank words returned by
 ;;   `dict-complete-ordered', and meta-data, not used for ranking
-;; * modified functions to work with new caching and meta-data, and
-;;   added `dict-set-meta-data' and `dict-lookup-meta-data'
+;; * modified functions to work with new caching and meta-data, and added
+;;   `dict-set-meta-data' and `dict-lookup-meta-data'
 ;; * renamed to `dict-tree' to help avoid conflicts with other packages
 ;;
 ;; Version 0.7
@@ -192,11 +185,10 @@
 ;; Version 0.6
 ;; * added dict-size function
 ;; * added dict-dump-words-to-buffer function
-;; * dictionaries now set their names and filenames by doing a library
-;;   search for themselves when loaded using require
+;; * dictionaries now set their names and filenames by doing a library search
+;;   for themselves when loaded using require
 ;; * added `read-dict' minibuffer completion function
-;; * interactive commands that read a dictionary name now provide
-;;   completion
+;; * interactive commands that read a dictionary name now provide completion
 ;;
 ;; Version 0.5
 ;; * added dict-dump-words-to-file function
@@ -212,8 +204,7 @@
 ;; * fixed bug preventing dict caches being loaded properly;
 ;; * explicitly require cl.el;
 ;;
-;; Note: version 0.1 dictionaries not compatible with version 0.2 and
-;;       above!
+;; Note: version 0.1 dictionaries not compatible with version 0.2 and above
 ;;
 ;; Version 0.1
 ;; * initial release
@@ -3589,10 +3580,5 @@ extension, suitable for passing to `load-library'."
 
 
 (provide 'dict-tree)
-
-
-;;; Local Variables:
-;;; fill-column: 72
-;;; End:
 
 ;;; dict-tree.el ends here
