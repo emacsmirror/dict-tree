@@ -2399,7 +2399,7 @@ that if the same key appears in multiple dictionaries, the alist
 may contain the same key multiple times, each copy associated
 with the data from a different dictionary. If you want to combine
 identical keys, use a meta-dictionary; see
-`dictree-meta-dict-create'.)
+`dictree-create-meta-dict'.)
 
 If optional argument RANK-FUNCTION is any non-nil value that is
 not a function, the completions are sorted according to the
@@ -2482,7 +2482,7 @@ are sought in all dictionaries in the list. (Note that if the
 same key appears in multiple dictionaries, the alist may contain
 the same key multiple times, each copy associated with the data
 from a different dictionary. If you want to combine identical
-keys, use a meta-dictionary; see `dictree-meta-dict-create'.)
+keys, use a meta-dictionary; see `dictree-create-meta-dict'.)
 
 REGEXP is a regular expression, but it need not necessarily be a
 string. It must be a sequence (vector, list of string) whose
