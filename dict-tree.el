@@ -3,7 +3,7 @@
 ;; Copyright (C) 2004-2012  Free Software Foundation, Inc
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.12.7
+;; Version: 0.12.8
 ;; Keywords: extensions, matching, data structures
 ;;           trie, tree, dictionary, completion, regexp
 ;; Package-Requires: ((trie "0.2.5") (tNFA "0.1.1") (heap "0.3"))
@@ -49,6 +49,12 @@
 
 
 ;;; Change Log:
+;;
+;; Version 0.12.8
+;; * modified `read-dict' to return dictionary name instead of dictionary
+;;   itself, even for loaded dictionaries, to avoid dictionary itself ending
+;;   up in `command-history'
+;; * updated interactive dictionary commands accordingly
 ;;
 ;; Version 0.12.7
 ;; * create defstruct copier functions for dict-trees and meta-dict-trees
@@ -1579,6 +1585,8 @@ PREFIX is a prefix of STR."
 (defun dictree-clear-caches (dict)
   "Clear all DICT's query caches."
   (interactive (list (read-dict "Dictionary: ")))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
   (dolist (cachefun '(dictree-lookup-cache
 		      dictree-complete-cache
 		      dictree-complete-ranked-cache
@@ -1914,6 +1922,8 @@ bind any variables with names commencing \"--\"."
   "Return the number of entries in dictionary DICT.
 Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
   (let ((count 0))
     (dictree-mapc (lambda (&rest dummy) (incf count)) dict)
     (when (called-interactively-p 'interactive)
@@ -2570,9 +2580,10 @@ both forms. See `dictree-write'.
 
 Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
 
   (let ((filename (dictree-filename dict)))
-
     ;; if dictionary has no associated file, prompt for one
     (unless (and filename (> (length filename) 0))
       (setq filename
@@ -2617,6 +2628,8 @@ and OVERWRITE is the prefix argument."
 		     (read-file-name "Write dictionary to file: "
 				     nil "")
 		     current-prefix-arg))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
   ;; default to DICT's current file, if any
   (when (or (null filename)
 	    (and (called-interactively-p 'any) (string= filename "")))
@@ -2782,7 +2795,7 @@ Interactively, FILE is read from the mini-buffer."
   (interactive (list (read-dict "Load dictionary: " nil nil t t)))
 
   ;; sort out dictionary name and file name
-  (if (dictree-p file)
+  (if (or (symbolp file) (dictree-p file))
       (message "Dictionary %s already loaded" (dictree-name file))
 
     ;; load the dictionary
@@ -2833,6 +2846,8 @@ Interactively, DICT is read from the mini-buffer, and DONT-SAVE
 is the prefix argument."
   (interactive (list (read-dict "Dictionary: ")
 		     current-prefix-arg))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
 
   ;; if dictionary has been modified, autosave is set and not overidden,
   ;; save it first
@@ -3175,6 +3190,8 @@ are created when using a trie that is not self-balancing, see
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to populate from: "
 				     nil "" t)))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
 
   (if (and (called-interactively-p 'any) (string= file ""))
       (message "No file specified; dictionary %s NOT populated"
@@ -3324,6 +3341,8 @@ TYPE is always 'string."
 		      "Buffer to dump to (defaults to current): "
 		      (buffer-name (current-buffer)))
 		     'string))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
 
   ;; select the buffer, creating it if necessary
   (if buffer
@@ -3390,6 +3409,8 @@ Interactively, DICT and FILE are read from the mini-buffer,
 OVERWRITE is the prefix argument, and TYPE is always 'string."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to dump to: " nil "")))
+  (when (and (called-interactively-p 'any) (symbolp dict))
+    (setq dict (eval dict)))
 
   (if (and (called-interactively-p 'any) (string= filename ""))
       (message "Dictionary %s NOT dumped" (dictree-name dict))
@@ -3483,7 +3504,7 @@ extension, suitable for passing to `load-library'."
      ((condition-case nil
 	  (dictree-p (eval (intern-soft dictname)))
 	(void-variable nil))
-      (eval (intern-soft dictname)))
+      (intern-soft dictname))
      ;; if user selected an unloaded dictionary, return dict name
      ((and allow-unloaded (stringp dictname)) dictname)
      ;; if DEFAULT was specified, return that
