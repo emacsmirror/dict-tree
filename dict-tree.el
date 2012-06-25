@@ -1696,7 +1696,7 @@ additional information, and can only be retrieved using
 `dictree-get-property'."
 
   ;; sort out arguments
-  (when (symbolp dict) (setq dict (eval dict)))
+  (and (symbolp dict) (setq dict (eval dict)))
   (cond
    ;; set PROPERTY for KEY in all constituent dicts of a meta-dict
    ((dictree--meta-dict-p dict)
@@ -1734,7 +1734,7 @@ still be detected by supplying the optional argument to
 Note that if DICT is a meta-dictionary, then this will delete
 KEY's PROPERTY in *all* its constituent dictionaries."
   ;; sort out arguments
-  (when (symbolp dict) (setq dict (eval dict)))
+  (and (symbolp dict) (setq dict (eval dict)))
   (cond
    ;; delete PROPERTY from KEY in all constituent dicts of a meta-dict
    ((dictree--meta-dict-p dict)
