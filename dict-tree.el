@@ -2657,8 +2657,7 @@ and OVERWRITE is the prefix argument."
 	      (find-file-noselect
 	       (setq tmpfile (make-temp-file dictname))))
 	(set-buffer buff)
-	;; call the appropriate write function to write the dictionary
-	;; code
+	;; call the appropriate write function to write the dictionary code
 	(if (dictree--meta-dict-p dict)
 	    (dictree--write-meta-dict-code dict dictname filename)
 	  (dictree--write-dict-code dict dictname filename))
@@ -2684,11 +2683,9 @@ and OVERWRITE is the prefix argument."
 	      ;; destination
 	      (unless (eq compilation 'uncompiled)
 		(if (save-window-excursion
-		      (let ((restore byte-compile-disable-print-circle)
+		      (let ((byte-compile-disable-print-circle t)
 			    err)
-			(setq byte-compile-disable-print-circle t)
 			(setq err (byte-compile-file tmpfile))
-			(setq byte-compile-disable-print-circle restore)
 			err))
 		    (rename-file (concat tmpfile ".elc")
 				 (concat filename ".elc") t)
@@ -3042,7 +3039,20 @@ is the prefix argument."
       (insert "(eval-when-compile (require 'cl))\n")
       (insert "(require 'dict-tree)\n")
       (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n")
-      (insert "(setq " dictname " " (prin1-to-string tmpdict) ")\n")
+      (unwind-protect
+	  (progn
+	    ;; transform trie to print form
+	    (trie-transform-for-print (dictree--trie tmpdict))
+	    (insert "(setq " dictname
+		    " '" (prin1-to-string tmpdict) ")\n"))
+	;; if dictionary doesn't use any custom save functions, tmpdict's trie
+	;; is identical to original dict, so transform it back to usable form
+	;; on write error
+	(unless (or (dictree--data-savefun dict)
+		    (dictree--plist-savefun dict))
+	  (trie-transform-from-read (dictree--trie tmpdict))))
+      (insert "(trie-transform-from-read (dictree--trie "
+	      dictname "))\n")
       (when hashcode (insert hashcode))
       (insert "(unless (memq " dictname " dictree-loaded-list)\n"
 	      "  (push " dictname " dictree-loaded-list))\n"))))
@@ -3560,17 +3570,17 @@ extension, suitable for passing to `load-library'."
 			     (concat "#<dict-tree \""
 				     (dictree-name d) "\">"))
 			   object " ") ")"))
-   ;; ((vectorp object)
-   ;;  (let ((pretty "[") (len (length object)))
-   ;;    (dotimes (i (1- len))
-   ;; 	(setq pretty
-   ;; 	      (concat pretty
-   ;; 		      (if (trie-p (aref object i))
-   ;; 			  "#<trie>" (prin1-to-string (aref object i))) " ")))
-   ;;    (concat pretty
-   ;; 	      (if (trie-p (aref object (1- len)))
-   ;; 		  "#<trie>" (prin1-to-string (aref object (1- len))))
-   ;; 	      "]")))
+;; ((vectorp object)
+;;  (let ((pretty "[") (len (length object)))
+;;    (dotimes (i (1- len))
+;; 	(setq pretty
+;; 	      (concat pretty
+;; 		      (if (trie-p (aref object i))
+;; 			  "#<trie>" (prin1-to-string (aref object i))) " ")))
+;;    (concat pretty
+;; 	      (if (trie-p (aref object (1- len)))
+;; 		  "#<trie>" (prin1-to-string (aref object (1- len))))
+;; 	      "]")))
    ))
 
 
