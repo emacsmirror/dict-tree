@@ -143,7 +143,7 @@ If START or END is negative, it counts from the end."
 ;; ----------------------------------------------------------------
 ;;                 Dictionary cache entry structures
 
-;; Note: We *could* us a defstruct for the cache entries, but for
+;; Note: We *could* use a defstruct for the cache entries, but for
 ;;       something this simple it doesn't seem worth it, especially
 ;;       given that we're using the defalias approach anyway for the
 ;;       data cells (above).
@@ -167,34 +167,67 @@ If START or END is negative, it counts from the end."
 ;; ----------------------------------------------------------------
 ;;                     Wrapping functions
 
-(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
-  ;; return wrapped insfun to deal with data wrapping
-  `(lambda (new old)
-     (dictree--cell-set-data old (,insfun (dictree--cell-data new)
-					  (dictree--cell-data old)))
-     old))
+;; return wrapped insfun to deal with data wrapping
+(if (trie-lexical-binding-p)
+    (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+      (lambda (new old)
+	(dictree--cell-set-data old (funcall insfun
+					     (dictree--cell-data new)
+					     (dictree--cell-data old)))
+	old))
+  (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+    `(lambda (new old)
+       (dictree--cell-set-data old (,insfun (dictree--cell-data new)
+					    (dictree--cell-data old)))
+       old)))
 
-(defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
-  ;; return wrapped rankfun to deal with data wrapping
-  `(lambda (a b)
-     (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
-	       (cons (car b) (dictree--cell-data (cdr b))))))
 
-(defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
-  ;; return wrapped combfun to deal with data wrapping
-  `(lambda (cell1 cell2)
-     (cons (,combfun (dictree--cell-data cell1)
-		     (dictree--cell-data cell2))
-	   (append (dictree--cell-plist cell1)
-		   (dictree--cell-plist cell2)))))
+;; return wrapped rankfun to deal with data wrapping
+(if (trie-lexical-binding-p)
+    (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
+      (lambda (a b)
+	(funcall rankfun
+		 (cons (car a) (dictree--cell-data (cdr a)))
+		 (cons (car b) (dictree--cell-data (cdr b))))))
+  (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
+    `(lambda (a b)
+       (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
+		(cons (car b) (dictree--cell-data (cdr b)))))))
 
-(defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
-  ;; return wrapped filter function to deal with data wrapping
-  `(lambda (key data) (,filter key (dictree--cell-data data))))
 
-(defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
-  ;; return wrapped result function to deal with data wrapping
-  `(lambda (res) (,resultfun (car res) (dictree--cell-data (cdr res)))))
+;; return wrapped combfun to deal with data wrapping
+(if (trie-lexical-binding-p)
+    (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
+      (lambda (cell1 cell2)
+	(cons (funcall combfun
+		       (dictree--cell-data cell1)
+		       (dictree--cell-data cell2))
+	      (append (dictree--cell-plist cell1)
+		      (dictree--cell-plist cell2)))))
+  (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
+    `(lambda (cell1 cell2)
+       (cons (,combfun (dictree--cell-data cell1)
+		       (dictree--cell-data cell2))
+	    (append (dictree--cell-plist cell1)
+		    (dictree--cell-plist cell2))))))
+
+
+;; return wrapped filter function to deal with data wrapping
+(if (trie-lexical-binding-p)
+    (defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
+      (lambda (key data) (funcall filter key (dictree--cell-data data))))
+  (defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
+    `(lambda (key data) (,filter key (dictree--cell-data data)))))
+
+
+;; return wrapped result function to deal with data wrapping
+(if (trie-lexical-binding-p)
+    (defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
+      (lambda (res)
+	(funcall resultfun (car res) (dictree--cell-data (cdr res)))))
+  (defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
+    `(lambda (res) (,resultfun (car res) (dictree--cell-data (cdr res))))))
+
 
 
 
@@ -212,7 +245,7 @@ If START or END is negative, it counts from the end."
 			     (file-name-sans-extension
 			      (file-name-nondirectory filename))))
 		  autosave
-		  unlisted
+		  _unlisted
 		  (comparison-function '<)
 		  (insert-function (lambda (a _b) a))
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
@@ -226,10 +259,10 @@ If START or END is negative, it counts from the end."
 		  key-savefun key-loadfun
 		  data-savefun data-loadfun
 		  plist-savefun plist-loadfun
-		  trie-type
+		  (trie-type 'avl)
 		  &aux
 		  (modified nil)
-		  (trie (trie-create comparison-function))
+		  (trie (make-trie comparison-function trie-type))
 		  (insfun (dictree--wrap-insfun insert-function))
 		  (rankfun (dictree--wrap-rankfun rank-function))
 		  (lookup-cache
@@ -261,7 +294,7 @@ If START or END is negative, it counts from the end."
 			     (file-name-sans-extension
 			      (file-name-nondirectory filename))))
 		  autosave
-		  unlisted
+		  _unlisted
 		  (comparison-function '<)
 		  (insert-function (lambda (a _b) a))
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
@@ -282,7 +315,7 @@ If START or END is negative, it counts from the end."
 		  transform-for-print transform-from-read
 		  &aux
 		  (modified nil)
-		  (trie (trie-create-custom
+		  (trie (make-trie-custom
 			 comparison-function
 			 :createfun createfun
 			 :insertfun insertfun
@@ -345,7 +378,7 @@ If START or END is negative, it counts from the end."
 		  (name (file-name-sans-extension
 			 (file-name-nondirectory filename)))
 		  autosave
-		  unlisted
+		  _unlisted
 		  (combine-function '+)
 		  (cache-policy 'time)
 		  (cache-update-policy 'synchronize)
