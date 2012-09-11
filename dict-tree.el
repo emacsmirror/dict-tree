@@ -90,11 +90,6 @@ If START or END is negative, it counts from the end."
 
 
 ;; `goto-line' without messing around with mark and messages
-;; Note: This is a bug in simple.el. There's clearly a place for
-;;       non-interactive calls to goto-line from Lisp code, and there's
-;;       no warning against doing this in the documentation. Yet
-;;       goto-line *always* calls push-mark, which usually *shouldn't*
-;;       be invoked by Lisp programs, as its docstring warns.
 (defmacro dictree--goto-line (line)
   "Goto line LINE, counting from line 1 at beginning of buffer."
   `(progn
@@ -219,7 +214,7 @@ If START or END is negative, it counts from the end."
 		  autosave
 		  unlisted
 		  (comparison-function '<)
-		  (insert-function (lambda (a b) a))
+		  (insert-function (lambda (a _b) a))
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
 		  (cache-policy 'time)
 		  (cache-update-policy 'synchronize)
@@ -268,7 +263,7 @@ If START or END is negative, it counts from the end."
 		  autosave
 		  unlisted
 		  (comparison-function '<)
-		  (insert-function (lambda (a b) a))
+		  (insert-function (lambda (a _b) a))
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
 		  (cache-policy 'time)
 		  (cache-update-policy 'synchronize)
@@ -600,10 +595,11 @@ structure. See `trie-create' for details."
   (or name (setq name (and filename (file-name-sans-extension
 				     (file-name-nondirectory filename)))))
   (or comparison-function (setq comparison-function '<))
-  (or insert-function (setq insert-function (lambda (a b) a)))
+  (or insert-function (setq insert-function (lambda (a _b) a)))
   (or rank-function (setq rank-function (lambda (a b) (> (cdr a) (cdr b)))))
   (or cache-policy (setq cache-policy 'time))
   (or cache-update-policy (setq cache-update-policy 'synchronize))
+  (or trie-type (setq trie-type 'avl))
 
   (let ((dict
 	 (dictree--create
@@ -663,7 +659,7 @@ underlying data structure. See `trie-create' for details."
   (or name (setq name (and filename (file-name-sans-extension
 				     (file-name-nondirectory filename)))))
   (or comparison-function (setq comparison-function '<))
-  (or insert-function (setq insert-function (lambda (a b) a)))
+  (or insert-function (setq insert-function (lambda (a _b) a)))
   (or rank-function (setq rank-function (lambda (a b) (< (cdr a) (cdr b)))))
   (or cache-policy (setq cache-policy 'time))
   (or cache-update-policy (setq cache-update-policy 'synchronize))
@@ -1635,7 +1631,7 @@ bind any variables with names commencing \"--\"."
   ;; binding a variable with the same name as one of the arguments
   (let ((--dictree-mapc--function function))
     (dictree--mapc
-     (lambda (key data plist)
+     (lambda (key data _plist)
        (funcall --dictree-mapc--function key data))
      dict type reverse)))
 
@@ -1757,7 +1753,7 @@ Interactively, DICT is read from the mini-buffer."
   (when (and (called-interactively-p 'any) (symbolp dict))
     (setq dict (symbol-value dict)))
   (let ((count 0))
-    (dictree-mapc (lambda (&rest dummy) (incf count)) dict)
+    (dictree-mapc (lambda (&rest _dummy) (incf count)) dict)
     (when (called-interactively-p 'interactive)
       (message "Dictionary %s contains %d entries"
 	       (dictree--name dict) count))
@@ -1787,11 +1783,11 @@ Interactively, DICT is read from the mini-buffer."
 			 (dictree--construct-meta-stack-heapfun sortfun)
 			 (length (dictree--trielist dict))))
 		  (pushed '())
-		  (dummy (mapc
-			  (lambda (dic)
-			    (heap-add
-			     heap (trie-stack dic type reverse)))
-			  (dictree--trielist dict)))))
+		  (_dummy (mapc
+			   (lambda (dic)
+			     (heap-add
+			      heap (trie-stack dic type reverse)))
+			   (dictree--trielist dict)))))
    (:constructor dictree--complete-meta-stack-create
 		 (dict prefix &optional reverse
 		  &aux
@@ -1803,13 +1799,13 @@ Interactively, DICT is read from the mini-buffer."
 			  sortfun reverse)
 			 (length (dictree--trielist dict))))
 		  (pushed '())
-		  (dummy (mapc
-			  (lambda (trie)
-			    (let ((stack (trie-complete-stack
-					  trie prefix reverse)))
-			      (unless (trie-stack-empty-p stack)
-				(heap-add heap stack))))
-			  (dictree--trielist dict)))))
+		  (_dummy (mapc
+			   (lambda (trie)
+			     (let ((stack (trie-complete-stack
+					   trie prefix reverse)))
+			       (unless (trie-stack-empty-p stack)
+				 (heap-add heap stack))))
+			   (dictree--trielist dict)))))
       (:constructor dictree--regexp-meta-stack-create
 		 (dict regexp &optional reverse
 		  &aux
@@ -1821,13 +1817,13 @@ Interactively, DICT is read from the mini-buffer."
 			  sortfun reverse)
 			 (length (dictree--trielist dict))))
 		  (pushed '())
-		  (dummy (mapc
-			  (lambda (trie)
-			    (let ((stack (trie-regexp-stack
-					  trie regexp reverse)))
-			      (unless (trie-stack-empty-p stack)
-				(heap-add heap stack))))
-			  (dictree--trielist dict)))))
+		  (_dummy (mapc
+			   (lambda (trie)
+			     (let ((stack (trie-regexp-stack
+					   trie regexp reverse)))
+			       (unless (trie-stack-empty-p stack)
+				 (heap-add heap stack))))
+			   (dictree--trielist dict)))))
    (:copier nil))
   combfun sortfun heap pushed)
 
@@ -2301,7 +2297,7 @@ Note that PREDICATE will be called with two arguments: the
 completion, and its associated data."
   (let ((completions
 	 (dictree-complete dict string nil nil nil nil
-			   predicate (lambda (key data) key))))
+			   predicate (lambda (key _data) key))))
     (if all completions (try-completion "" completions))))
 
 
