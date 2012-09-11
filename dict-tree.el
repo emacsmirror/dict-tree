@@ -365,7 +365,7 @@ If START or END is negative, it counts from the end."
 		    (lambda (dic)
 		      (cond
 		       ((dictree-p dic) dic)
-		       ((symbolp dic) (eval dic))
+		       ((symbolp dic) (symbol-value dic))
 		       (t (error "Invalid object in DICTIONARY-LIST"))))
 		    dictionary-list))
 		  (combfun (dictree--wrap-combfun combine-function))
@@ -764,7 +764,7 @@ cache-threshold arguments are ignored."
 			 regexp-ranked-cache-threshold)))
       (mapc
        (lambda (dic)
-	 (if (symbolp dic) (setq dic (eval dic)))
+	 (if (symbolp dic) (setq dic (symbol-value dic)))
 	 (setf (dictree--meta-dict-list dic)
 	       (cons dict (dictree--meta-dict-list dic))))
        dictionary-list))
@@ -1418,7 +1418,7 @@ PREFIX is a prefix of STR."
   "Clear all DICT's query caches."
   (interactive (list (read-dict "Dictionary: ")))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
   (dolist (cachefun '(dictree-lookup-cache
 		      dictree-complete-cache
 		      dictree-complete-ranked-cache
@@ -1528,7 +1528,7 @@ additional information, and can only be retrieved using
 `dictree-get-property'."
 
   ;; sort out arguments
-  (and (symbolp dict) (setq dict (eval dict)))
+  (and (symbolp dict) (setq dict (symbol-value dict)))
   (cond
    ;; set PROPERTY for KEY in all constituent dicts of a meta-dict
    ((dictree--meta-dict-p dict)
@@ -1566,7 +1566,7 @@ still be detected by supplying the optional argument to
 Note that if DICT is a meta-dictionary, then this will delete
 KEY's PROPERTY in *all* its constituent dictionaries."
   ;; sort out arguments
-  (and (symbolp dict) (setq dict (eval dict)))
+  (and (symbolp dict) (setq dict (symbol-value dict)))
   (cond
    ;; delete PROPERTY from KEY in all constituent dicts of a meta-dict
    ((dictree--meta-dict-p dict)
@@ -1755,7 +1755,7 @@ bind any variables with names commencing \"--\"."
 Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
   (let ((count 0))
     (dictree-mapc (lambda (&rest dummy) (incf count)) dict)
     (when (called-interactively-p 'interactive)
@@ -2413,7 +2413,7 @@ both forms. See `dictree-write'.
 Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
 
   (let ((filename (dictree-filename dict)))
     ;; if dictionary has no associated file, prompt for one
@@ -2461,7 +2461,7 @@ and OVERWRITE is the prefix argument."
 				     nil "")
 		     current-prefix-arg))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
   ;; default to DICT's current file, if any
   (when (or (null filename)
 	    (and (called-interactively-p 'any) (string= filename "")))
@@ -2638,7 +2638,7 @@ Interactively, FILE is read from the mini-buffer."
       (let (dictname dict)
 	(setq dictname
 	      (file-name-nondirectory (file-name-sans-extension file))
-	      dict (eval (intern-soft dictname)))
+	      dict (symbol-value (intern-soft dictname)))
 	(if (not (dictree-p dict))
 	    ;; if loading failed, throw error interactively, return nil
 	    ;; non-interactively
@@ -2676,7 +2676,7 @@ is the prefix argument."
   (interactive (list (read-dict "Dictionary: ")
 		     current-prefix-arg))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
 
   ;; if dictionary has been modified, autosave is set and not overidden,
   ;; save it first
@@ -3033,7 +3033,7 @@ are created when using a trie that is not self-balancing, see
 		     (read-file-name "File to populate from: "
 				     nil "" t)))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
 
   (if (and (called-interactively-p 'any) (string= file ""))
       (message "No file specified; dictionary %s NOT populated"
@@ -3184,7 +3184,7 @@ TYPE is always 'string."
 		      (buffer-name (current-buffer)))
 		     'string))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
 
   ;; select the buffer, creating it if necessary
   (if buffer
@@ -3252,7 +3252,7 @@ OVERWRITE is the prefix argument, and TYPE is always 'string."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to dump to: " nil "")))
   (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (eval dict)))
+    (setq dict (symbol-value dict)))
 
   (if (and (called-interactively-p 'any) (string= filename ""))
       (message "Dictionary %s NOT dumped" (dictree-name dict))
@@ -3344,7 +3344,7 @@ extension, suitable for passing to `load-library'."
      ((and allow-unmatched (file-regular-p dictname)) dictname)
      ;; if user selected a loaded dictionary, return dict itself
      ((condition-case nil
-	  (dictree-p (eval (intern-soft dictname)))
+	  (dictree-p (symbol-value (intern-soft dictname)))
 	(void-variable nil))
       (intern-soft dictname))
      ;; if user selected an unloaded dictionary, return dict name
