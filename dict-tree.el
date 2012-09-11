@@ -1,4 +1,4 @@
-;;; dict-tree.el --- Dictionary data structure
+;;; dict-tree.el --- Dictionary data structure  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2004-2012  Free Software Foundation, Inc
 
@@ -257,7 +257,7 @@ If START or END is negative, it counts from the end."
 		   (if regexp-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (metadict-list nil)
+		  (meta-dict-list nil)
 		  ))
    (:constructor dictree--create-custom
 		 (&optional
@@ -322,7 +322,7 @@ If START or END is negative, it counts from the end."
 		   (if regexp-ranked-cache-threshold
 		       (make-hash-table :test 'equal)
 		     nil))
-		  (metadict-list nil)
+		  (meta-dict-list nil)
 		  ))
    (:copier dictree--copy))
   name filename autosave modified
@@ -1126,7 +1126,7 @@ PREFIX is a prefix of STR."
   ;; Synchronise dictionary DICT's caches, given that the data
   ;; associated with KEY has been changed to NEWDATA, or KEY has been
   ;; deleted if DELETED is non-nil (NEWDATA is ignored in that case)."
-  (let (arg reverse cache cache-entry completions cmpl maxnum)
+  (let (arg reverse cache)
 
     ;; synchronise the lookup cache if dict is a meta-dictionary, since
     ;; it's not done automatically
@@ -1577,7 +1577,7 @@ KEY's PROPERTY in *all* its constituent dictionaries."
 	    (dictree--meta-dict-dictlist dict)))
    (t  ;; delete PROPERTY from KEY in normal dict
     (let* ((cell (trie-member (dictree--trie dict) key))
-	   plist tail tail)
+	   plist tail)
       (when (and cell
 		 (setq tail
 		       (plist-member
@@ -1746,7 +1746,7 @@ is more efficient.
 
 Note: to avoid nasty dynamic scoping bugs, FUNCTION must *not*
 bind any variables with names commencing \"--\"."
-  (nreverse (dictree-mapf function 'cons dict type)))
+  (nreverse (dictree-mapf function 'cons dict type reverse)))
 
 
 
@@ -2029,7 +2029,7 @@ Returns nil if the stack is empty."
       ;; otherwise...
       (let ((heap (dictree--meta-stack-heap dictree-stack))
 	    (sortfun (dictree--meta-stack-sortfun dictree-stack))
-	    stack curr next cell)
+	    stack curr next)
 	(unless (heap-empty heap)
 	  ;; remove the first dictree-stack from the heap, pop it's
 	  ;; first element, and add it back to the heap (note that it
@@ -3065,9 +3065,8 @@ are created when using a trie that is not self-balancing, see
 	    (goto-char (point-min)))
 	  (when (setq entry
 		      (condition-case nil
-			  (dictree--read-line
-			   dict key-loadfun data-loadfun
-			   plist-loadfun)
+			  (dictree--read-line key-loadfun data-loadfun
+					      plist-loadfun)
 			(error (error "Error reading line %d of %s"
 				      midpt file))))
 	    (dictree-insert dict (car entry) (nth 1 entry)
@@ -3083,9 +3082,8 @@ are created when using a trie that is not self-balancing, see
 	      (forward-line 1))
 	    (when (setq entry
 			(condition-case nil
-			    (dictree--read-line
-			     dict key-loadfun data-loadfun
-			     plist-loadfun)
+			    (dictree--read-line key-loadfun data-loadfun
+						plist-loadfun)
 			  (error (error "Error reading line %d of %s"
 					(+ midpt i 1) file))))
 	      (dictree-insert dict (car entry) (nth 1 entry)
@@ -3102,9 +3100,8 @@ are created when using a trie that is not self-balancing, see
 	      (dictree--goto-line (- midpt i 1))
 	      (when (setq entry
 			  (condition-case nil
-			      (dictree--read-line
-			       dict key-loadfun data-loadfun
-			       plist-loadfun)
+			      (dictree--read-line key-loadfun data-loadfun
+						  plist-loadfun)
 			    (error (error "Error reading line %d of %s"
 					  (- midpt i 1) file))))
 		(dictree-insert dict (car entry)
@@ -3120,9 +3117,8 @@ are created when using a trie that is not self-balancing, see
 	    (dictree--goto-line lines)
 	    (when (setq entry
 			(condition-case nil
-			    (dictree--read-line
-			     dict key-loadfun data-loadfun
-			     plist-loadfun)
+			    (dictree--read-line key-loadfun data-loadfun
+						plist-loadfun)
 			  (error (error "Error reading line %d of %s"
 					lines file))))
 	      (dictree-insert dict (car entry) (nth 1 entry)
@@ -3137,10 +3133,9 @@ are created when using a trie that is not self-balancing, see
 
 
 (defun dictree--read-line
-  (dict &optional key-loadfun data-loadfun plist-loadfun)
+  (&optional key-loadfun data-loadfun plist-loadfun)
   ;; Return a list containing the key, data (if any, otherwise nil) and
-  ;; property list (ditto) at the current line of the current buffer,
-  ;; for dictionary DICT.
+  ;; property list (ditto) at the current line of the current buffer.
   (save-excursion
     (let (key data plist)
       ;; read key
@@ -3151,12 +3146,11 @@ are created when using a trie that is not self-balancing, see
 	(unless (eq (line-end-position) (point))
 	  (setq data (read (current-buffer))))
 	(when data-loadfun (setq data (funcall data-loadfun data)))
-	;; if there's anything after the data, use is as the property
-	;; list
+	;; if there's anything after the data, use it as the property list
 	(unless (eq (line-end-position) (point))
 	  (setq plist (read (current-buffer))))
 	(when plist-loadfun (funcall plist-loadfun plist))
-	;; return the key and data
+	;; return what we've read
 	(list key data plist)))))
 
 
