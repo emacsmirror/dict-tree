@@ -3401,9 +3401,8 @@ extension, suitable for passing to `load-library'."
 ;; print dictionaries in full whilst edebugging, despite this warning,
 ;; disable the advice.
 ;;
-;; FIXME: Should use `cedet-edebug-prin1-extensions' instead of advice
-;;        when `cedet-edebug' is loaded, though I believe this still
-;;        works in that case.
+;; FIXME: We should probably use the `cust-print' features instead of advice
+;; here.
 
 
 (eval-when-compile
