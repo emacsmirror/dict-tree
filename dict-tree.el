@@ -27,22 +27,36 @@
 
 ;;; Commentary:
 ;;
-;; A dictionary is used to store strings, along with arbitrary data associated
-;; with each string. As well as basic data insertion, manipulation and
-;; retrieval, a dictionary can perform prefix searches on those strings,
-;; retrieving all strings with a given prefix in either alphabetical or any
-;; other order (see the `dictree-complete' and `dictree-complete-ordered'
-;; functions), and is able to cache results in order to speed up those
-;; searches. The package also provides persistent storage of the data
-;; structures to files.
+;; A dict-tree (created using `dictree-create') is used to store strings,
+;; along with arbitrary data associated with each string. As well as basic
+;; data insertion (`dictree-insert'), manipulation (`dictree-insert'), and
+;; retrieval (`dictree-lookup', `dictree-member-p'), a dict-tree can perform
+;; sophisticated queries on strings, including:
 ;;
-;; You create a dictionary using `dictree-create', add entries to it using
-;; `dictree-insert', lookup entries using `dictree-lookup', find completions
-;; of sequences using `dictree-complete', find completions and sort them in
-;; any order you speficy using `dictree-complete-ordered', map over it using
-;; `dictree-map' and `dictree-mapcar', save it to a file using `dictree-save'
-;; or `dictree-write', and load from file it using `dictree-load'. Various
-;; other useful functions are also provided.
+;; - retrieve all (or a given number of) strings with a given prefix, ranking
+;;   the results in alphabetical or any other given order
+;;   (`dictree-complete')
+;;
+;; - retrieve all (or a given number of) strings that match a regular
+;;   expression, ranking the results in alphabetical or any other given order
+;;   (`dictree-regexp-search')
+;;
+;; - create dict-tree stack objects, which allow efficient access to the
+;;   strings in the dictionary or in query results as though they were sorted
+;;   on a stack (useful for designing efficient algorithms on top of
+;;   dict-trees)
+;;   (`dictree-stack', `dictree-complete-stack', `dictree-regexp-stack')
+;;
+;; - map over all strings in lexical order
+;;   (`dictree-mapc', `dictree-mapcar' and `dictree-mapf')
+;;
+;; These sophisticated string queries are fast even for very large dict-trees,
+;; and dict-tree's can also cache query results (and automatically keep these
+;; caches synchronised) to speed up queries even further.
+;;
+;; The package also provides persistent storage of dict-trees to file, and can
+;; save modified dictionaries automatically if desired.
+;; (`dictree-save', `dictree-write', `dictee-load')
 ;;
 ;; This package uses the trie package trie.el. the tagged NFA package tNFA.el,
 ;; and the heap package heap.el.
@@ -2104,35 +2118,33 @@ Returns nil if the stack is empty."
   (dict arg cachefun cacheparamfun triefun stackfun
    &optional rank-function maxnum reverse no-cache filter resultfun)
   ;; Return results of querying DICT with argument ARG using TRIEFUN or
-  ;; STACKFUN. If result of calling CACHEPARAMFUN on DICT is non-nil,
-  ;; look first for cached result in cache returned by calling CACHEFUN
-  ;; on DICT, and cache result if query fulfils caching conditions. If
-  ;; RANK-FUNCTION is non-nil, return results ordered accordingly. If
-  ;; MAXNUM is an integer, only the first MAXNUM results will be
-  ;; returned. If REVERSE is non-nil, results are in reverse order. A
-  ;; non-nil NO-CACHE prevents caching of results, irrespective of
-  ;; DICT's cache settings. If supplied, only results that pass FILTER
-  ;; are included. A non-nil RESULTFUN is applied to results before
-  ;; adding them to final results list. Otherwise, an alist of key-data
-  ;; associations is returned.
+  ;; STACKFUN. If result of calling CACHEPARAMFUN on DICT is non-nil, look
+  ;; first for cached result in cache returned by calling CACHEFUN on DICT,
+  ;; and cache result if query fulfils caching conditions. If RANK-FUNCTION is
+  ;; non-nil, return results ordered accordingly. If MAXNUM is an integer,
+  ;; only the first MAXNUM results will be returned. If REVERSE is non-nil,
+  ;; results are in reverse order. A non-nil NO-CACHE prevents caching of
+  ;; results, irrespective of DICT's cache settings. If FILTER is supplied,
+  ;; only results that pass FILTER are included. A non-nil RESULTFUN is
+  ;; applied to results before adding them to final results list. Otherwise,
+  ;; an alist of key-data associations is returned.
 
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
 
-  (let (cache cacheparam completions cmpl cache-entry)
+  (let (cache cacheparam results res cache-entry)
     ;; map over all dictionaries in list
     (dolist (dic dict)
       (setq cache (funcall cachefun dic)
 	    cacheparam (funcall cacheparamfun dic))
       (cond
-       ;; If FILTER or custom RANK-FUNCTION was specified, look in trie
-       ;; since we don't cache custom searches. We pass a slightly
-       ;; redefined filter to `trie-complete' to deal with data
-       ;; wrapping.
+       ;; If FILTER or custom RANK-FUNCTION was specified, look in trie since
+       ;; we don't cache custom searches. We pass a slightly redefined filter
+       ;; to `triefun' to deal with data wrapping.
        ((or filter
 	    (and rank-function
 		 (not (eq rank-function (dictree-rank-function dic)))))
-	(setq cmpl
+	(setq res
 	      (dictree--do-query dic arg triefun stackfun
 				 (dictree--wrap-rankfun rank-function)
 				 maxnum reverse
@@ -2140,7 +2152,7 @@ Returns nil if the stack is empty."
 				   (dictree--wrap-filter filter)))))
 
 
-       ;; if there's a cached result with enough completions, use it
+       ;; if there's a cache entry with enough results, use it
        ((and (setq cache-entry
 		   (if cacheparam
 		       (gethash (cons arg reverse) cache)
@@ -2148,40 +2160,39 @@ Returns nil if the stack is empty."
 	     (or (null (dictree--cache-maxnum cache-entry))
 		 (and maxnum
 		      (<= maxnum (dictree--cache-maxnum cache-entry)))))
-	(setq cmpl (dictree--cache-results cache-entry))
-	;; drop any excess completions
+	(setq res (dictree--cache-results cache-entry))
+	;; drop any excess results
 	(when (and maxnum
 		   (or (null (dictree--cache-maxnum cache-entry))
 		       (> (dictree--cache-maxnum cache-entry) maxnum)))
-	  (setcdr (nthcdr (1- maxnum) completions) nil)))
+	  (setcdr (nthcdr (1- maxnum) results) nil)))
 
 
        ;; if there was nothing useful in the cache, do query and time it
        (t
 	(let (time)
 	  (setq time (float-time))
-	  (setq cmpl
+	  (setq res
 		(dictree--do-query
 		 dic arg triefun stackfun
 		 (when rank-function
 		   (dictree--wrap-rankfun rank-function))
 		 maxnum reverse nil))
 	  (setq time (- (float-time) time))
-	  ;; if we're above the dictionary's completion cache threshold,
-	  ;; cache the result
+	  ;; if we're above the dictionary's cache threshold, cache the result
 	  (when (and (not no-cache)
 		     (dictree--above-cache-threshold-p
 		      time (length arg) (dictree-cache-policy dic)
 		      cacheparam))
 	    (setf (dictree-modified dic) t)
 	    (puthash (cons arg reverse)
-		     (dictree--cache-create cmpl maxnum)
+		     (dictree--cache-create res maxnum)
 		     cache)))))
 
-      ;; merge new completion into completions list
-      (setq completions
+      ;; merge new result into results list
+      (setq results
 	    (dictree--merge
-	     completions cmpl
+	     results res
 	     (if rank-function
 		 (dictree--wrap-rankfun rank-function)
 	       `(lambda (a b)
@@ -2190,13 +2201,13 @@ Returns nil if the stack is empty."
 		   (car a) (car b))))
 	     nil maxnum)))
 
-    ;; return completions list, applying RESULTFUN is specified,
+    ;; return results list, applying RESULTFUN is specified,
     ;; otherwise just stripping meta-data
     (mapcar
      (if resultfun
 	 (dictree--wrap-resultfun resultfun)
        (lambda (el) (cons (car el) (dictree--cell-data (cdr el)))))
-     completions)))
+     results)))
 
 
 
@@ -2216,28 +2227,28 @@ Returns nil if the stack is empty."
 			  (lambda (a b)
 			    (not (funcall rank-function a b))))
 			(1+ maxnum))))
-	    (i 0) cmpl completions)
-	;; pop MAXNUM completions from the stack
+	    (i 0) res results)
+	;; pop MAXNUM results from the stack
 	(while (and (or (null maxnum) (< i maxnum))
-		    (setq cmpl (dictree--stack-pop stack)))
-	  ;; check completion passes FILTER
-	  (when (or (null filter) (funcall filter cmpl))
+		    (setq res (dictree--stack-pop stack)))
+	  ;; check result passes FILTER
+	  (when (or (null filter) (funcall filter res))
 	    (if rank-function
-		(heap-add heap cmpl)   ; for ranked query, add to heap
-	      (push cmpl completions)) ; for lexical query, add to list
+		(heap-add heap res)   ; for ranked query, add to heap
+	      (push res results)) ; for lexical query, add to list
 	    (incf i)))
 	(if (null rank-function)
-	    ;; for lexical query, reverse and return completion list (we
+	    ;; for lexical query, reverse and return result list (we
 	    ;; built it backwards)
-	    (nreverse completions)
-	  ;; for ranked query, pass rest of completions through heap
-	  (while (setq cmpl (dictree--stack-pop stack))
-	    (heap-add heap cmpl)
+	    (nreverse results)
+	  ;; for ranked query, pass rest of results through heap
+	  (while (setq res (dictree--stack-pop stack))
+	    (heap-add heap res)
 	    (heap-delete-root heap))
-	  ;; extract completions from heap
-	  (while (setq cmpl (heap-delete-root heap))
-	    (push cmpl completions))
-	  completions))  ; return completion list
+	  ;; extract results from heap
+	  (while (setq res (heap-delete-root heap))
+	    (push res results))
+	  results))  ; return result list
 
     ;; for a normal dict, call corresponding trie function on dict's
     ;; trie. Note: could use a dictree-stack here too - would it be more
