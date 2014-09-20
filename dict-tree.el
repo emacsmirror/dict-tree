@@ -110,7 +110,7 @@ If START or END is negative, it counts from the end."
   `(progn
      (goto-char 1)
      (if (eq selective-display t)
-	 (re-search-forward "[\n\C-m]" nil 'end (1- ,line))
+	 (re-search-forward "[\n\C-m]" nil 'no-error (1- ,line))
        (forward-line (1- ,line)))))
 
 
@@ -262,7 +262,7 @@ If START or END is negative, it counts from the end."
 			      (file-name-nondirectory filename))))
 		  autosave
 		  _unlisted
-		  (comparison-function '<)
+		  (comparison-function #'<)
 		  (insert-function (lambda (a _b) a))
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
 		  (cache-policy 'time)
@@ -283,23 +283,23 @@ If START or END is negative, it counts from the end."
 		  (rankfun (dictree--wrap-rankfun rank-function))
 		  (lookup-cache
 		   (if lookup-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (complete-cache
 		   (if complete-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (complete-ranked-cache
 		   (if complete-ranked-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (regexp-cache
 		   (if regexp-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (regexp-ranked-cache
 		   (if regexp-ranked-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (meta-dict-list nil)
 		  ))
@@ -311,7 +311,7 @@ If START or END is negative, it counts from the end."
 			      (file-name-nondirectory filename))))
 		  autosave
 		  _unlisted
-		  (comparison-function '<)
+		  (comparison-function #'<)
 		  (insert-function (lambda (a _b) a))
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
 		  (cache-policy 'time)
@@ -348,23 +348,23 @@ If START or END is negative, it counts from the end."
 		  (rankfun (dictree--wrap-rankfun rank-function))
 		  (lookup-cache
 		   (if lookup-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (complete-cache
 		   (if complete-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (complete-ranked-cache
 		   (if complete-ranked-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (regexp-cache
 		   (if regexp-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (regexp-ranked-cache
 		   (if regexp-ranked-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (meta-dict-list nil)
 		  ))
@@ -395,7 +395,7 @@ If START or END is negative, it counts from the end."
 			 (file-name-nondirectory filename)))
 		  autosave
 		  _unlisted
-		  (combine-function '+)
+		  (combine-function #'+)
 		  (cache-policy 'time)
 		  (cache-update-policy 'synchronize)
 		  lookup-cache-threshold
@@ -415,23 +415,23 @@ If START or END is negative, it counts from the end."
 		  (combfun (dictree--wrap-combfun combine-function))
 		  (lookup-cache
 		   (if lookup-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (complete-cache
 		   (if complete-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (complete-ranked-cache
 		   (if complete-ranked-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (regexp-cache
 		   (if regexp-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  (regexp-ranked-cache
 		   (if regexp-ranked-cache-threshold
-		       (make-hash-table :test 'equal)
+		       (make-hash-table :test #'equal)
 		     nil))
 		  ))
    (:copier dictree--meta-dict-copy))
@@ -462,7 +462,7 @@ If START or END is negative, it counts from the end."
 (defun dictree--do-trielist (dict)
   (declare (special accumulate))
   (if (dictree-meta-dict-p dict)
-      (mapc 'dictree--do-trielist (dictree--meta-dict-dictlist dict))
+      (mapc #'dictree--do-trielist (dictree--meta-dict-dictlist dict))
     (setq accumulate (cons (dictree--trie dict) accumulate))))
 
 
@@ -709,7 +709,7 @@ underlying data structure. See `trie-create' for details."
   ;; here
   (or name (setq name (and filename (file-name-sans-extension
 				     (file-name-nondirectory filename)))))
-  (or comparison-function (setq comparison-function '<))
+  (or comparison-function (setq comparison-function #'<))
   (or insert-function (setq insert-function (lambda (a _b) a)))
   (or rank-function (setq rank-function (lambda (a b) (< (cdr a) (cdr b)))))
   (or cache-policy (setq cache-policy 'time))
@@ -781,7 +781,7 @@ cache-threshold arguments are ignored."
   (or name (setq name (and filename
 			   (file-name-sans-extension
 			    (file-name-nondirectory filename)))))
-  (or combine-function (setq combine-function '+))
+  (or combine-function (setq combine-function #'+))
   (or cache-policy (setq cache-policy 'time))
   (or cache-update-policy (setq cache-update-policy 'synchronize))
 
@@ -1664,14 +1664,14 @@ set. (See also `dictree-member-p' for testing existence alone.)"
   "Apply FUNCTION to all entries in dictionary DICT,
 for side-effects only.
 
-FUNCTION will be passed two arguments: a key of type
-TYPE ('string, 'vector, or 'list, defaulting to 'vector) from the
+FUNCTION will be passed two arguments: a key of type TYPE
+\(string, vector, or list, defaulting to vector\) from the
 dictionary, and the data associated with that key. The dictionary
 entries will be traversed in \"lexical\" order, i.e. the order
 defined by the dictionary's comparison function (cf.
 `dictree-create').
 
-If TYPE is 'string, it must be possible to apply the function
+If TYPE is string, it must be possible to apply the function
 `string' to the elements of sequences stored in DICT.
 
 FUNCTION is applied in ascending order, or descending order if
@@ -1728,7 +1728,7 @@ dictionary and its associated data.
 
 Optional argument TYPE (one of the symbols vector, lisp or
 string; defaults to vector) sets the type of sequence passed to
-FUNCTION. If TYPE is 'string, it must be possible to apply the
+FUNCTION. If TYPE is string, it must be possible to apply the
 function `string' to the individual elements of key sequences
 stored in DICT.
 
@@ -1777,7 +1777,7 @@ dictionary and its associated data.
 
 Optional argument TYPE (one of the symbols vector, lisp or
 string; defaults to vector) sets the type of sequence passed to
-FUNCTION. If TYPE is 'string, it must be possible to apply the
+FUNCTION. If TYPE is string, it must be possible to apply the
 function `string' to the individual elements of key sequences
 stored in DICT.
 
@@ -1790,13 +1790,13 @@ Note that if you don't care about the order in which FUNCTION is
 applied, just that the resulting list is in the correct order,
 then
 
-  (trie-mapf function 'cons trie type (not reverse))
+  (trie-mapf function #'cons trie type (not reverse))
 
 is more efficient.
 
 Note: to avoid nasty dynamic scoping bugs, FUNCTION must *not*
 bind any variables with names commencing \"--\"."
-  (nreverse (dictree-mapf function 'cons dict type reverse)))
+  (nreverse (dictree-mapf function #'cons dict type reverse)))
 
 
 
@@ -2324,12 +2324,12 @@ default key-data cons cell."
   (dictree--query
    dict prefix
    (if rank-function
-       'dictree-complete-ranked-cache
-     'dictree-complete-cache)
+       #'dictree-complete-ranked-cache
+     #'dictree-complete-cache)
    (if rank-function
-       'dictree-complete-ranked-cache-threshold
-     'dictree-complete-cache-threshold)
-   'trie-complete 'dictree-complete-stack
+       #'dictree-complete-ranked-cache-threshold
+     #'dictree-complete-cache-threshold)
+   #'trie-complete #'dictree-complete-stack
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
@@ -2434,12 +2434,12 @@ default key-data cons cell."
   (dictree--query
    dict regexp
    (if rank-function
-       'dictree-regexp-ranked-cache
-     'dictree-regexp-cache)
+       #'dictree-regexp-ranked-cache
+     #'dictree-regexp-cache)
    (if rank-function
-       'dictree-regexp-ranked-cache-threshold
-     'dictree-regexp-cache-threshold)
-   'trie-regexp-search 'dictree-regexp-stack
+       #'dictree-regexp-ranked-cache-threshold
+     #'dictree-regexp-cache-threshold)
+   #'trie-regexp-search #'dictree-regexp-stack
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
@@ -2649,12 +2649,12 @@ asked whether they wish to continue after a failed save."
 	       (concat
 		"Error: failed to save the following modified "
 		"dictionaries: "
-		(mapconcat 'dictree--name save-failures ", ")))
+		(mapconcat #'dictree--name save-failures ", ")))
 	      nil)
 	  (yes-or-no-p
 	   (concat "Error: failed to save the following modified "
 		   "dictionaries: "
-		   (mapconcat 'dictree--name save-failures ", ")
+		   (mapconcat #'dictree--name save-failures ", ")
 		   "; continue anyway? ")))
       t)))
 
@@ -2789,10 +2789,10 @@ is the prefix argument."
 	 (trie-insert tmptrie key
 		      (dictree--cell-create
 		       (funcall (or (dictree--data-savefun dict)
-				    'identity)
+				    #'identity)
 				(dictree--cell-data cell))
 		       (funcall (or (dictree--plist-savefun dict)
-				    'identity)
+				    #'identity)
 				(dictree--cell-plist cell)))))
        (dictree--trie dict))
 
@@ -2826,7 +2826,7 @@ is the prefix argument."
 	 (lambda (key val)
 	   (push
 	    (cons key
-		  (cons (mapcar 'car (dictree--cache-results val))
+		  (cons (mapcar #'car (dictree--cache-results val))
 			(dictree--cache-maxnum val)))
 	    lookup-alist))
 	 (dictree--lookup-cache dict))
@@ -2834,7 +2834,7 @@ is the prefix argument."
 	(setq hashcode
 	      (concat
 	       hashcode
-	       "(let ((lookup-cache (make-hash-table :test 'equal))\n"
+	       "(let ((lookup-cache (make-hash-table :test #'equal))\n"
 	       "      (trie (dictree--trie " dictname ")))\n"
 	       "  (mapc\n"
 	       "   (lambda (entry)\n"
@@ -2870,7 +2870,7 @@ is the prefix argument."
 		    (push
 		     (cons key
 			   (cons
-			    (mapcar 'car (dictree--cache-results val))
+			    (mapcar #'car (dictree--cache-results val))
 			    (dictree--cache-maxnum val)))
 		     alist))
 		  (funcall (nth 2 cache-details) dict))
@@ -2880,7 +2880,7 @@ is the prefix argument."
 	   hashcode
 	   (concat
 	    hashcode
-	    "(let ((cache (make-hash-table :test 'equal))\n"
+	    "(let ((cache (make-hash-table :test #'equal))\n"
 	    "      (trie (dictree--trie " dictname ")))\n"
 	    "  (mapc\n"
 	    "   (lambda (entry)\n"
@@ -2955,13 +2955,13 @@ is the prefix argument."
       ;; convert lookup cache hash table to an alist, if it exists
       (when (dictree--meta-dict-lookup-cache-threshold dict)
 	(maphash (lambda (key val)
-		   (push (cons key (mapcar 'car val)) lookup-alist))
+		   (push (cons key (mapcar #'car val)) lookup-alist))
 		 (dictree--meta-dict-lookup-cache dict))
 	;; generate code to reconstruct the lookup hash table
 	(setq hashcode
 	      (concat
 	       hashcode
-	       "(let ((cache (make-hash-table :test 'equal)))\n"
+	       "(let ((cache (make-hash-table :test #'equal)))\n"
 	       "  (mapc (lambda (entry)\n"
 	       "    (puthash (car entry) (cdr entry) cache))\n"
 	       "    (dictree--meta-dict-lookup-cache " dictname "))\n"
@@ -2995,7 +2995,7 @@ is the prefix argument."
 	   hashcode
 	   (concat
 	    hashcode
-	    "(let ((cache (make-hash-table :test 'equal)))\n"
+	    "(let ((cache (make-hash-table :test #'equal)))\n"
 	    "  (mapc (lambda (entry)\n"
 	    "    (puthash (car entry) (cdr entry) cache))\n"
 	    "    (" (symbol-name (nth 2 cache-details)) " "
@@ -3038,7 +3038,7 @@ is the prefix argument."
       (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n"
 	      "(setq " dictname " " (prin1-to-string tmpdict) ")\n"
 	      "(setf (dictree--meta-dict-dictlist " dictname ")\n"
-	      "      (mapcar 'eval (dictree--meta-dict-dictlist "
+	      "      (mapcar #'eval (dictree--meta-dict-dictlist "
 	                            dictname ")))\n")
       (when hashcode (insert hashcode))
       (insert "(unless (memq " dictname " dictree-loaded-list)"
@@ -3214,15 +3214,15 @@ appended to the end of it. Otherwise, a new buffer will be
 created. If BUFFER is omitted, the current buffer is used.
 
 TYPE determines the type of sequence to use to represent the
-keys, and should be one of 'string, 'vector or 'list. The default
-is 'vector.
+keys, and should be one of the symbols string, vector or
+list. The default is vector.
 
 Note that if the data does not have a read syntax, the dumped
 data can not be used to recreate the dictionary using
 `dictree-populate-from-file'.
 
 Interactively, DICT and BUFFER are read from the mini-buffer,
-TYPE is always 'string."
+TYPE is always string."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-buffer
 		      "Buffer to dump to (defaults to current): "
@@ -3257,14 +3257,14 @@ TYPE is always 'string."
 		  (dictree-name dict) (buffer-name buffer)
 		  (1+ count) dictsize))
        (insert (prin1-to-string
-		(funcall (or (dictree--key-savefun dict) 'identity)
+		(funcall (or (dictree--key-savefun dict) #'identity)
 			 key)))
        (when (setq data
-		   (funcall (or (dictree--data-savefun dict) 'identity)
+		   (funcall (or (dictree--data-savefun dict) #'identity)
 			    data))
 	 (insert " " (prin1-to-string data)))
        (when (setq plist
-		   (funcall (or (dictree--plist-savefun dict) 'identity)
+		   (funcall (or (dictree--plist-savefun dict) #'identity)
 			    plist))
 	 (unless data (insert " nil"))
 	 (insert " " (prin1-to-string plist)))
@@ -3285,15 +3285,15 @@ as that used by `dictree-populate-from-file'. Prompts to overwrite
 FILENAME if it already exists, unless OVERWRITE is non-nil.
 
 TYPE determines the type of sequence to use to represent the
-keys, and should be one of 'string, 'vector or 'list. The default
-is 'vector.
+keys, and should be one of the symbols string, vector or
+list. The default is vector.
 
 Note that if the data does not have a read syntax and no , the dumped
 data can not be used to recreate the dictionary using
 `dictree-populate-from-file'.
 
 Interactively, DICT and FILE are read from the mini-buffer,
-OVERWRITE is the prefix argument, and TYPE is always 'string."
+OVERWRITE is the prefix argument, and TYPE is always string."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to dump to: " nil "")))
   (when (and (called-interactively-p 'any) (symbolp dict))
@@ -3357,7 +3357,7 @@ extension, suitable for passing to `load-library'."
       ;; gather names of all Elisp libraries in this restricted
       ;; load-path
       (dolist (f (all-completions
-		  "" (apply-partially 'locate-file-completion-table
+		  "" (apply-partially #'locate-file-completion-table
 				      paths (get-load-suffixes))))
 	(when (and (null (file-name-directory f))
 		   (and (> (length f) 5)
@@ -3376,7 +3376,7 @@ extension, suitable for passing to `load-library'."
 		    prompt
 		    (if allow-unmatched
 			(completion-table-in-turn
-			 dictname 'read-file-name-internal)
+			 dictname #'read-file-name-internal)
 		      dictname)
 		    nil (not allow-unmatched) nil
 		    (if allow-unloaded
