@@ -639,8 +639,9 @@ structure. See `trie-create' for details."
   ;; sadly, passing null values over-rides the defaults in the defstruct
   ;; dictree--create, so we have to explicitly set the defaults again
   ;; here
-  (or name (setq name (and filename (file-name-sans-extension
-				     (file-name-nondirectory filename)))))
+  (or name (setq name (and filename (make-symbol
+				     (file-name-sans-extension
+				     (file-name-nondirectory filename))))))
   (or comparison-function (setq comparison-function '<))
   (or insert-function (setq insert-function (lambda (a _b) a)))
   (or rank-function (setq rank-function (lambda (a b) (> (cdr a) (cdr b)))))
