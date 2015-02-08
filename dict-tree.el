@@ -71,6 +71,7 @@
 
 
 
+
 ;;; ================================================================
 ;;;            Replacements for CL and Elisp functions
 
@@ -114,6 +115,7 @@ If START or END is negative, it counts from the end."
 
 
 
+
 ;;; ====================================================================
 ;;;  Internal functions and variables for use in the dictionary package
 
@@ -244,7 +246,7 @@ If START or END is negative, it counts from the end."
 
 
 
-
+
 ;; ----------------------------------------------------------------
 ;;                 The dictionary data structures
 
@@ -445,6 +447,7 @@ If START or END is negative, it counts from the end."
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;           Miscelaneous internal functions and macros
 
@@ -522,7 +525,7 @@ If START or END is negative, it counts from the end."
 
 
 
-
+
 ;;; ================================================================
 ;;;    The (mostly) public functions which operate on dictionaries
 
@@ -1028,6 +1031,7 @@ for meta-dictionary DICT.")
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;                  Inserting and deleting data
 
@@ -1117,6 +1121,7 @@ TEST returns non-nil."
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;                     Cache updating
 
@@ -1475,7 +1480,7 @@ PREFIX is a prefix of STR."
 
 
 
-
+
 ;; ----------------------------------------------------------------
 ;;                        Retrieving data
 
@@ -1552,6 +1557,7 @@ also `dictree-member-p' for testing existence alone.)"
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;                 Getting and setting meta-data
 
@@ -1650,7 +1656,7 @@ set. (See also `dictree-member-p' for testing existence alone.)"
 
 
 
-
+
 ;; ----------------------------------------------------------------
 ;;                        Mapping functions
 
@@ -1809,6 +1815,7 @@ Interactively, DICT is read from the mini-buffer."
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;                        Using dictrees as stacks
 
@@ -2111,7 +2118,7 @@ Returns nil if the stack is empty."
 
 
 
-
+
 ;; ----------------------------------------------------------------
 ;;             Functions for building advanced queries
 
@@ -2260,6 +2267,7 @@ Returns nil if the stack is empty."
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;                        Completing
 
@@ -2347,6 +2355,7 @@ completion, and its associated data."
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;                      Regexp search
 
@@ -2439,7 +2448,7 @@ default key-data cons cell."
 
 
 
-
+
 ;; ----------------------------------------------------------------
 ;;                    Persistent storage
 
@@ -3037,6 +3046,7 @@ is the prefix argument."
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;                Dumping and restoring contents
 
@@ -3311,7 +3321,7 @@ OVERWRITE is the prefix argument, and TYPE is always 'string."
 
 
 
-
+
 ;; ----------------------------------------------------------------
 ;;                     Minibuffer completion
 
@@ -3392,6 +3402,7 @@ extension, suitable for passing to `load-library'."
 
 
 
+
 ;; ----------------------------------------------------------------
 ;;            Pretty-print dictionaries during edebug
 
