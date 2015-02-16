@@ -1,6 +1,6 @@
 ;;; dict-tree.el --- Dictionary data structure  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2004-2012  Free Software Foundation, Inc
+;; Copyright (C) 2004-2015  Free Software Foundation, Inc
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
 ;; Version: 0.12.8
@@ -47,7 +47,7 @@
 ;;   dict-trees)
 ;;   (`dictree-stack', `dictree-complete-stack', `dictree-regexp-stack')
 ;;
-;; - map over all strings in lexical order
+;; - map over all strings in lexicographic order
 ;;   (`dictree-mapc', `dictree-mapcar' and `dictree-mapf')
 ;;
 ;; These sophisticated string queries are fast even for very large dict-trees,
@@ -174,10 +174,15 @@ If START or END is negative, it counts from the end."
 (defalias 'dictree--cache-maxnum 'cdr)  ; INTERNAL USE ONLY
 
 ;; Set the completions list for cache entry CACHE
-(defalias 'dictree--cache-set-completions 'setcar)  ; INTERNAL USE ONLY
+(defalias 'dictree--cache-set-results 'setcar)  ; INTERNAL USE ONLY
 
 ;; Set the completions list for cache entry CACHE
 (defalias 'dictree--cache-set-maxnum 'setcdr)  ; INTERNAL USE ONLY
+
+;; define setf methods so we can use setf abstraction wherever possible
+(defsetf dictree--cache-results dictree--cache-set-results)
+(defsetf dictree--cache-maxnum dictree--cache-set-maxnum)
+
 
 
 ;; ----------------------------------------------------------------
@@ -267,11 +272,7 @@ If START or END is negative, it counts from the end."
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
 		  (cache-policy 'time)
 		  (cache-update-policy 'synchronize)
-		  lookup-cache-threshold
-		  complete-cache-threshold
-		  complete-ranked-cache-threshold
-		  regexp-cache-threshold
-		  regexp-ranked-cache-threshold
+		  cache-threshold
 		  key-savefun key-loadfun
 		  data-savefun data-loadfun
 		  plist-savefun plist-loadfun
@@ -281,26 +282,16 @@ If START or END is negative, it counts from the end."
 		  (trie (make-trie comparison-function trie-type))
 		  (insfun (dictree--wrap-insfun insert-function))
 		  (rankfun (dictree--wrap-rankfun rank-function))
-		  (lookup-cache
-		   (if lookup-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (complete-cache
-		   (if complete-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (complete-ranked-cache
-		   (if complete-ranked-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (regexp-cache
-		   (if regexp-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (regexp-ranked-cache
-		   (if regexp-ranked-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
+		  (lookup-cache (make-hash-table :test #'equal))
+		  (complete-cache (make-hash-table :test #'equal))
+		  (complete-ranked-cache (make-hash-table :test #'equal))
+		  (regexp-cache (make-hash-table :test #'equal))
+		  (regexp-ranked-cache (make-hash-table :test #'equal))
+		  (fuzzy-match-cache (make-hash-table :test #'equal))
+		  (fuzzy-match-ranked-cache (make-hash-table :test #'equal))
+		  (fuzzy-complete-cache (make-hash-table :test #'equal))
+		  (fuzzy-complete-ranked-cache
+		   (make-hash-table :test #'equal))
 		  (meta-dict-list nil)
 		  ))
    (:constructor dictree--create-custom
@@ -316,11 +307,7 @@ If START or END is negative, it counts from the end."
 		  (rank-function (lambda (a b) (> (cdr a) (cdr b))))
 		  (cache-policy 'time)
 		  (cache-update-policy 'synchronize)
-		  lookup-cache-threshold
-		  complete-cache-threshold
-		  complete-ranked-cache-threshold
-		  regexp-cache-threshold
-		  regexp-ranked-cache-threshold
+		  cache-threshold
 		  key-savefun key-loadfun
 		  data-savefun data-loadfun
 		  plist-savefun plist-loadfun
@@ -346,37 +333,26 @@ If START or END is negative, it counts from the end."
 			 :transform-from-read transform-from-read))
 		  (insfun (dictree--wrap-insfun insert-function))
 		  (rankfun (dictree--wrap-rankfun rank-function))
-		  (lookup-cache
-		   (if lookup-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (complete-cache
-		   (if complete-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (complete-ranked-cache
-		   (if complete-ranked-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (regexp-cache
-		   (if regexp-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (regexp-ranked-cache
-		   (if regexp-ranked-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
+		  (lookup-cache (make-hash-table :test #'equal))
+		  (complete-cache (make-hash-table :test #'equal))
+		  (complete-ranked-cache (make-hash-table :test #'equal))
+		  (regexp-cache (make-hash-table :test #'equal))
+		  (regexp-ranked-cache (make-hash-table :test #'equal))
+		  (fuzzy-match-cache (make-hash-table :test #'equal))
+		  (fuzzy-match-ranked-cache (make-hash-table :test #'equal))
+		  (fuzzy-complete-cache (make-hash-table :test #'equal))
+		  (fuzzy-complete-ranked-cache
+		   (make-hash-table :test #'equal))
 		  (meta-dict-list nil)
 		  ))
    (:copier dictree--copy))
   name filename autosave modified
   comparison-function insert-function insfun rank-function rankfun
-  cache-policy cache-update-policy
-  lookup-cache lookup-cache-threshold
-  complete-cache complete-cache-threshold
-  complete-ranked-cache complete-ranked-cache-threshold
-  regexp-cache regexp-cache-threshold
-  regexp-ranked-cache regexp-ranked-cache-threshold
+  cache-policy cache-update-policy cache-threshold
+  lookup-cache complete-cache complete-ranked-cache
+  regexp-cache regexp-ranked-cache
+  fuzzy-match-cache fuzzy-match-ranked-cache
+  fuzzy-complete-cache fuzzy-complete-ranked-cache
   key-savefun key-loadfun
   data-savefun data-loadfun
   plist-savefun plist-loadfun
@@ -398,11 +374,7 @@ If START or END is negative, it counts from the end."
 		  (combine-function #'+)
 		  (cache-policy 'time)
 		  (cache-update-policy 'synchronize)
-		  lookup-cache-threshold
-		  complete-cache-threshold
-		  complete-ranked-cache-threshold
-		  regexp-cache-threshold
-		  regexp-ranked-cache-threshold
+		  cache-threshold
 		  &aux
 		  (dictlist
 		   (mapcar
@@ -413,36 +385,25 @@ If START or END is negative, it counts from the end."
 		       (t (error "Invalid object in DICTIONARY-LIST"))))
 		    dictionary-list))
 		  (combfun (dictree--wrap-combfun combine-function))
-		  (lookup-cache
-		   (if lookup-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (complete-cache
-		   (if complete-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (complete-ranked-cache
-		   (if complete-ranked-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (regexp-cache
-		   (if regexp-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
-		  (regexp-ranked-cache
-		   (if regexp-ranked-cache-threshold
-		       (make-hash-table :test #'equal)
-		     nil))
+		  (lookup-cache (make-hash-table :test #'equal))
+		  (complete-cache (make-hash-table :test #'equal))
+		  (complete-ranked-cache (make-hash-table :test #'equal))
+		  (regexp-cache (make-hash-table :test #'equal))
+		  (regexp-ranked-cache (make-hash-table :test #'equal))
+		  (fuzzy-match-cache (make-hash-table :test #'equal))
+		  (fuzzy-match-ranked-cache (make-hash-table :test #'equal))
+		  (fuzzy-complete-cache (make-hash-table :test #'equal))
+		  (fuzzy-complete-ranked-cache
+		   (make-hash-table :test #'equal))
 		  ))
    (:copier dictree--meta-dict-copy))
   name filename autosave modified
   combine-function combfun
-  cache-policy cache-update-policy
-  lookup-cache lookup-cache-threshold
-  complete-cache complete-cache-threshold
-  complete-ranked-cache complete-ranked-cache-threshold
-  regexp-cache regexp-cache-threshold
-  regexp-ranked-cache regexp-ranked-cache-threshold
+  cache-policy cache-update-policy cache-threshold
+  lookup-cache complete-cache complete-ranked-cache
+  regexp-cache regexp-ranked-cache
+  fuzzy-match-cache fuzzy-match-ranked-cache
+  fuzzy-complete-cache fuzzy-complete-ranked-cache
   dictlist meta-dict-list)
 
 
@@ -534,12 +495,7 @@ If START or END is negative, it counts from the end."
   (&optional
    name filename autosave unlisted
    comparison-function insert-function rank-function
-   cache-policy cache-update-policy
-   lookup-cache-threshold
-   complete-cache-threshold
-   complete-ranked-cache-threshold
-   regexp-cache-threshold
-   regexp-ranked-cache-threshold
+   cache-policy cache-update-policy cache-threshold
    key-savefun key-loadfun
    data-savefun data-loadfun
    plist-savefun plist-loadfun
@@ -578,40 +534,46 @@ RANK-FUNCTION sets the function used to rank the results of
 whose car is a dictree key (a sequence) and whose cdr is the data
 associated with that key. It should return non-nil if the first
 argument is \"better\" than the second, nil otherwise. It
-defaults to \"lexical\" comparison of the keys, ignoring the data
-\(which is not very useful, since an unranked `dictree-complete'
-query already does this much more efficiently\).
+defaults to \"lexicographic\" comparison of the keys, ignoring
+the data \(which is not very useful, since an unranked
+`dictree-complete' query already does this much more
+efficiently\).
 
-CACHE-POLICY should be a symbol ('time, 'length, or 'both), which
-determines which query operations are cached. The 'time setting
-caches queries that take longer (in seconds) than the
-corresponding CACHE-THRESHOLD value. The 'length setting caches
-lookups of key sequences that are longer than
-LOOKUP-CACHE-THRESHOLD value (since those are likely to be the
-slower ones), and caches completions of prefixes that are shorter
-than the corresponding CACHE-THRESHOLD (since those are likely to
-be the slower ones in that case). The setting 'both requires both
-conditions to be satisfied simultaneously. In this case,
-CACHE-THRESHOLD must be a plist with properties :time and :length
-specifying the corresponding cache thresholds.
+CACHE-POLICY should be a symbol (`time', `length',
+`time-and-length' or `time-or-length'), which determines which
+query operations are cached. The `time' setting caches queries
+that take longer (in seconds) than the CACHE-THRESHOLD value.
 
-CACHE-UPDATE-POLICY should be a symbol ('synchronize or 'delete),
-which determines how the caches are updated when data is inserted
-or deleted. The former updates tainted cache entries, which makes
-queries faster but insertion and deletion slower, whereas the
-latter deletes any tainted cache entries, which makes queries
-slower but insertion and deletion faster.
+The `length' setting caches query operations based on the length
+of the string involved the query. For this setting, CACHE-POLICY
+should be a plist with properties :long and :short. Lookups,
+fuzzy matches, and regexp queries that do not end in \".*\" will
+be cached if the string is longer than the :long value (since
+long strings are likely to be the slower ones in these
+cases). Completions, fuzzy completions, and regexp queries that
+end in \".*\" will be cached if the string or regexp is shorter
+than the :short value \(since short strings are likely to be the
+slower ones for those cases\).
 
-The CACHE-THRESHOLD settings set the threshold for caching the
-corresponding dictionary query (lookup, completion, ranked
-completion). The meaning of these values depends on the setting
-of CACHE-POLICY (see above).
+The `time-and-length' setting only caches results if both
+conditions are satisfied simultaneously, whereas the
+`time-or-length' setting caches results if either condition is
+satisfied. For these settings, CACHE-THRESHOLD must be a plist
+with properties :time, :long and :short, specifying the
+corresponding cache thresholds.
 
-All CACHE-THRESHOLD's default to nil. The values nil and t are
-special. If a CACHE-THRESHOLD is set to nil, no caching is done
-for that type of query. If it is t, everything is cached for that
-type of query \(similar behaviour can be obtained by setting the
-CACHE-THRESHOLD to 0, but it is better to use t\).
+CACHE-THRESHOLD defaults to nil. The values nil and t are
+special. If CACHE-THRESHOLD is set to nil, no caching is done. If
+it is t, everything is cached for that type of query \(similar
+behaviour can be obtained by setting the a `time' CACHE-THRESHOLD
+of 0, but it is better to use t\).
+
+CACHE-UPDATE-POLICY should be a symbol (`synchronize' or
+`delete'), which determines how the caches are updated when data
+is inserted or deleted. The former updates tainted cache entries,
+which makes queries faster but insertion and deletion slower,
+whereas the latter deletes any tainted cache entries, which makes
+queries slower but insertion and deletion faster.
 
 KEY-SAVEFUN, DATA-SAVEFUN and PLIST-SAVEFUN are functions used to
 convert keys, data and property lists into lisp objects that have
@@ -639,9 +601,8 @@ loaded dictionary.
 TRIE-TYPE sets the type of trie to use as the underlying data
 structure. See `trie-create' for details."
 
-  ;; sadly, passing null values over-rides the defaults in the defstruct
-  ;; dictree--create, so we have to explicitly set the defaults again
-  ;; here
+  ;; sadly, passing null values overrides the defaults in the defstruct
+  ;; dictree--create, so we have to explicitly set the defaults again here
   (or name (setq name (and filename (make-symbol
 				     (file-name-sans-extension
 				     (file-name-nondirectory filename))))))
@@ -656,12 +617,7 @@ structure. See `trie-create' for details."
 	 (dictree--create
 	  filename (when name (symbol-name name)) autosave unlisted
 	  comparison-function insert-function rank-function
-	  cache-policy cache-update-policy
-	  lookup-cache-threshold
-	  complete-cache-threshold
-	  complete-ranked-cache-threshold
-	  regexp-cache-threshold
-	  regexp-ranked-cache-threshold
+	  cache-policy cache-update-policy cache-threshold
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -684,12 +640,7 @@ structure. See `trie-create' for details."
      name filename autosave unlisted
      &key
      comparison-function insert-function rank-function
-     cache-policy cache-update-policy
-     lookup-cache-threshold
-     complete-cache-threshold
-     complete-ranked-cache-threshold
-     regexp-cache-threshold
-     regexp-ranked-cache-threshold
+     cache-policy cache-update-policy cache-threshold
      key-savefun key-loadfun
      data-savefun data-loadfun
      plist-savefun plist-loadfun
@@ -719,12 +670,7 @@ underlying data structure. See `trie-create' for details."
 	 (dictree--create-custom
 	  filename (when name (symbol-name name)) autosave unlisted
 	  comparison-function insert-function rank-function
-	  cache-policy cache-update-policy
-	  lookup-cache-threshold
-	  complete-cache-threshold
-	  complete-ranked-cache-threshold
-	  regexp-cache-threshold
-	  regexp-ranked-cache-threshold
+	  cache-policy cache-update-policy cache-threshold
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -757,12 +703,7 @@ underlying data structure. See `trie-create' for details."
    &optional
    name filename autosave unlisted
    combine-function
-   cache-policy cache-update-policy
-   lookup-cache-threshold
-   complete-cache-threshold
-   complete-ranked-cache-threshold
-   regexp-cache-threshold
-   regexp-ranked-cache-threshold)
+   cache-policy cache-update-policy cache-threshold)
   "Create a meta-dictionary based on the list of dictionaries
 in DICTIONARY-LIST.
 
@@ -773,7 +714,7 @@ should return a combined datum.
 
 The other arguments are as for `dictree-create'. Note that
 caching is only possible if NAME is supplied, otherwise the
-cache-threshold arguments are ignored."
+CACHE-THRESHOLD argument is ignored and caching is disabled."
 
   ;; sadly, passing null values over-rides the defaults in the defstruct
   ;; `dictree--create', so we have to explicitly set the defaults again
@@ -791,24 +732,15 @@ cache-threshold arguments are ignored."
 	  autosave unlisted
 	  combine-function
 	  cache-policy cache-update-policy
-	  (when name lookup-cache-threshold)
-	  (when name complete-cache-threshold)
-	  (when name complete-ranked-cache-threshold)
-	  (when name regexp-cache-threshold)
-	  (when name regexp-ranked-cache-threshold))
-	 ))
+	  (when name cache-threshold)
+	 )))
     ;; store dictionary in variable NAME
     (when name (set name dict))
     ;; add it to loaded dictionary list, unless it's unlisted
     (unless (or (null name) unlisted)
       (push dict dictree-loaded-list))
     ;; update meta-dict-list cells of constituent dictionaries
-    (unless (or (null name)
-		(not (or lookup-cache-threshold
-			 complete-cache-threshold
-			 complete-ranked-cache-threshold
-			 regexp-cache-threshold
-			 regexp-ranked-cache-threshold)))
+    (unless (or (null name) (not cache-threshold))
       (mapc
        (lambda (dic)
 	 (if (symbolp dic) (setq dic (symbol-value dic)))
@@ -929,18 +861,18 @@ for meta-dictionary DICT.")
       (dictree--meta-dict-cache-update-policy dict)
     (dictree--cache-update-policy dict)))
 
-(defsubst dictree-lookup-cache-threshold (dict)
-  "Return the lookup cache threshold for dictionary DICT."
+(defsubst dictree-cache-threshold (dict)
+  "Return the cache threshold for dictionary DICT."
   (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-lookup-cache-threshold dict)
-    (dictree--lookup-cache-threshold dict)))
+      (dictree--meta-dict-cache-threshold dict)
+    (dictree--cache-threshold dict)))
 
-(defsetf dictree-lookup-cache-threshold (dict) (param)
-  ;; setf method for lookup cache threshold
+(defsetf dictree-cache-threshold (dict) (param)
+  ;; setf method for cache threshold
   `(if (dictree--meta-dict-p ,dict)
-       (setf (dictree--meta-dict-lookup-cache-threshold ,dict)
+       (setf (dictree--meta-dict-cache-threshold ,dict)
 	     ,param)
-     (setf (dictree--lookup-cache-threshold ,dict)
+     (setf (dictree--cache-threshold ,dict)
 	   ,param)))
 
 (defsubst dictree-lookup-cache (dict)
@@ -949,39 +881,11 @@ for meta-dictionary DICT.")
       (dictree--meta-dict-lookup-cache dict)
     (dictree--lookup-cache dict)))
 
-(defsubst dictree-complete-cache-threshold (dict)
-  "Return the completion cache threshold for dictionary DICT."
-  (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-complete-cache-threshold dict)
-    (dictree--complete-cache-threshold dict)))
-
-(defsetf dictree-complete-cache-threshold (dict) (param)
-  ;; setf method for completion cache threshold
-  `(if (dictree--meta-dict-p ,dict)
-       (setf (dictree--meta-dict-complete-cache-threshold ,dict)
-	     ,param)
-     (setf (dictree--complete-cache-threshold ,dict)
-	   ,param)))
-
 (defun dictree-complete-cache (dict)
   ;; Return the completion cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-complete-cache dict)
     (dictree--complete-cache dict)))
-
-(defsubst dictree-complete-ranked-cache-threshold (dict)
-  "Return the ranked completion cache threshold for dictionary DICT."
-  (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-complete-ranked-cache-threshold dict)
-    (dictree--complete-ranked-cache-threshold dict)))
-
-(defsetf dictree-complete-ranked-cache-threshold (dict) (param)
-  ;; setf method for ranked completion cache threshold
-  `(if (dictree--meta-dict-p ,dict)
-       (setf (dictree--meta-dict-complete-ranked-cache-threshold ,dict)
-	     ,param)
-     (setf (dictree--complete-ranked-cache-threshold ,dict)
-	   ,param)))
 
 (defun dictree-complete-ranked-cache (dict)
   ;; Return the ranked completion cache for dictionary DICT.
@@ -989,45 +893,41 @@ for meta-dictionary DICT.")
       (dictree--meta-dict-complete-ranked-cache dict)
     (dictree--complete-ranked-cache dict)))
 
-(defsubst dictree-regexp-cache-threshold (dict)
-  "Return the regexp cache threshold for dictionary DICT."
-  (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-regexp-cache-threshold dict)
-    (dictree--regexp-cache-threshold dict)))
-
-(defsetf dictree-regexp-cache-threshold (dict) (param)
-  ;; setf method for regexp cache threshold
-  `(if (dictree--meta-dict-p ,dict)
-       (setf (dictree--meta-dict-regexp-cache-threshold ,dict)
-	     ,param)
-     (setf (dictree--regexp-cache-threshold ,dict)
-	   ,param)))
-
 (defun dictree-regexp-cache (dict)
   ;; Return the regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-regexp-cache dict)
     (dictree--regexp-cache dict)))
 
-(defsubst dictree-regexp-ranked-cache-threshold (dict)
-  "Return the ranked regexp cache threshold for dictionary DICT."
-  (if (dictree--meta-dict-p dict)
-      (dictree--meta-dict-regexp-ranked-cache-threshold dict)
-    (dictree--regexp-ranked-cache-threshold dict)))
-
-(defsetf dictree-regexp-ranked-cache-threshold (dict) (param)
-  ;; setf method for ranked regexp cache threshold
-  `(if (dictree--meta-dict-p ,dict)
-       (setf (dictree--meta-dict-regexp-ranked-cache-threshold ,dict)
-	     ,param)
-     (setf (dictree--regexp-ranked-cache-threshold ,dict)
-	   ,param)))
-
 (defun dictree-regexp-ranked-cache (dict)
   ;; Return the ranked regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-regexp-ranked-cache dict)
     (dictree--regexp-ranked-cache dict)))
+
+(defun dictree-fuzzy-match-cache (dict)
+  ;; Return the regexp cache for dictionary DICT.
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-fuzzy-match-cache dict)
+    (dictree--fuzzy-match-cache dict)))
+
+(defun dictree-fuzzy-match-ranked-cache (dict)
+  ;; Return the ranked regexp cache for dictionary DICT.
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-fuzzy-match-ranked-cache dict)
+    (dictree--fuzzy-match-ranked-cache dict)))
+
+(defun dictree-fuzzy-complete-cache (dict)
+  ;; Return the regexp cache for dictionary DICT.
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-fuzzy-complete-cache dict)
+    (dictree--fuzzy-complete-cache dict)))
+
+(defun dictree-fuzzy-complete-ranked-cache (dict)
+  ;; Return the ranked regexp cache for dictionary DICT.
+  (if (dictree--meta-dict-p dict)
+      (dictree--meta-dict-fuzzy-complete-ranked-cache dict)
+    (dictree--fuzzy-complete-ranked-cache dict)))
 
 
 
@@ -1159,116 +1059,101 @@ PREFIX is a prefix of STR."
   (and threshold
        (or (eq threshold t)
 	   (and (eq policy 'time) (>= time threshold))
-	   ;; note: we cache lookups of *longer* keys, because those are
-	   ;;       likely to be slower ones
 	   (and (eq policy 'length)
 		(if cache-long-keys
-		    (>= length threshold) (<= length threshold)))
-	   (and (eq policy 'both)
+		    (>= length (plist-get threshold :long))
+		  (<= length (plist-get threshold :short))))
+	   (and (eq policy 'time-and-length)
+		(>= time (plist-get threshold :time))
+		(if cache-long-keys
+		    (>= length (plist-get threshold :long))
+		  (<= length (plist-get threshold :short))))
+	   (and (eq policy 'time-or-length)
 		(or (>= time (plist-get threshold :time))
 		    (if cache-long-keys
-			(>= length (plist-get threshold :length))
-		      (<= length (plist-get threshold :length))))))))
+			(>= length (plist-get threshold :long))
+		      (<= length (plist-get threshold :short))))))))
+
 
 
 (defun dictree--update-cache (dict key newdata &optional deleted)
   ;; Synchronise dictionary DICT's caches, given that the data
   ;; associated with KEY has been changed to NEWDATA, or KEY has been
   ;; deleted if DELETED is non-nil (NEWDATA is ignored in that case)."
-  (let (arg reverse cache)
+  (let (arg auxargs reverse)
+    (when (dictree-cache-threshold dict)
 
-    ;; synchronise the lookup cache if dict is a meta-dictionary, since
-    ;; it's not done automatically
-    (when (and (dictree--meta-dict-p dict)
-	       (dictree--meta-dict-lookup-cache-threshold dict))
-      (setq cache (dictree--lookup-cache dict))
-      (cond
-       ;; if updating dirty cache entries...
-       ((eq (dictree-cache-update-policy dict) 'synchronize)
-	(when (gethash key cache)
-	  (if deleted (remhash key cache) (puthash key newdata cache))))
-       ;; if deleting dirty cache entries...
-       (t (remhash key cache))))
+      ;; synchronise lookup cache if dict is a meta-dictionary, since it
+      ;; doesn't happen automatically for a meta-dict
+      (when (dictree--meta-dict-p dict)
+	(cond
+	 ;; updating dirty cache entries
+	 ((eq (dictree-cache-update-policy dict) 'synchronize)
+	  (when (gethash key (dictree--lookup-cache dict))
+	    (if deleted
+		(remhash key (dictree--lookup-cache dict))
+	      (puthash key newdata (dictree--lookup-cache dict)))))
+	 ;; deleting dirty cache entries
+	 (t (remhash key (dictree--lookup-cache dict)))))
 
-    ;; synchronize the completion cache, if it exists
-    (when (dictree-complete-cache-threshold dict)
-      (setq cache (dictree-complete-cache dict))
-      ;; check every cache entry to see if it matches
-      (maphash
-       (lambda (cache-key cache-entry)
-	 (setq arg (car cache-key))
-	 (when (dictree--prefix-p arg key)
-	   (setq reverse (cdr cache-key))
-	    (cond
-	     ;; if updating dirty cache entries...
-	     ((eq (dictree-cache-update-policy dict) 'synchronize)
-	      (dictree--synchronize-completion-cache
-	       dict cache-entry arg reverse key newdata deleted))
-	     ;; if deleting dirty cache entries...
-	     (t (remhash (cons arg reverse) cache)))))
-       cache))
+      ;; synchronize query caches
+      (dolist (cachefuns
+	       '((dictree-complete-cache
+		  dictree--synchronize-completion-cache
+		  dictree--prefix-p)
+		 (dictree-complete-ranked-cache
+		  dictree--synchronize-ranked-completion-cache
+		  dictree--prefix-p)
+		 (dictree-regexp-cache
+		  dictree--synchronize-regexp-cache
+		  (lambda (arg key)
+		    (tNFA-regexp-match
+		     arg key :test (dictree--comparison-function dict))))
+		 (dictree-regexp-ranked-cache
+		  dictree--synchronize-ranked-regexp-cache
+		  (lambda (arg key)
+		    (tNFA-regexp-match
+		     arg key :test (dictree--comparison-function dict))))
+		 (dictree-fuzzy-match-cache
+		  dictree--synchronize-fuzzy-match-cache
+		  (lambda (string dist key)
+		    (<= (Lewenstein-distance string key) dist)))
+		 (dictree-fuzzy-match-ranked-cache
+		  dictree--synchronize-ranked-fuzzy-match-cache
+		  (lambda (string dist key)
+		    (<= (Lewenstein-distance string key) dist)))
+		 (dictree-fuzzy-complete-cache
+		  dictree--synchronize-fuzzy-completion-cache
+		  (lambda (prefix dist key)
+		    (<= (Lewenstein-distance prefix key) dist)))
+		 (dictree-fuzzy-complete-ranked-cache
+		  dictree--synchronize-ranked-fuzzy-completion-cache
+		  (lambda (prefix dist key)
+		    (<= (Lewenstein-distance prefix key) dist)))
+		 ))
 
-    ;; synchronize the ranked completion cache, if it exists
-    (when (dictree-complete-ranked-cache-threshold dict)
-      (setq cache (dictree-complete-ranked-cache dict))
-      ;; check every cache entry to see if it matches
-      (maphash
-       (lambda (cache-key cache-entry)
-	 (setq arg (car cache-key))
-	 (when (dictree--prefix-p arg key)
-	   (setq reverse (cdr cache-key))
-	    (cond
-	     ;; if updating dirty cache entries...
-	     ((eq (dictree-cache-update-policy dict) 'synchronize)
-	      (dictree--synchronize-ranked-completion-cache
-	       dict cache-entry arg reverse key newdata deleted))
-	     ;; if deleting dirty cache entries...
-	     (t (remhash (cons arg reverse) cache)))))
-       cache))
-
-    ;; synchronize the regexp cache, if it exists
-    (when (dictree-regexp-cache-threshold dict)
-      (setq cache (dictree--regexp-cache dict))
-      ;; check every cache entry to see if it matches
-      (maphash
-       (lambda (cache-key cache-entry)
-	 (setq arg (car cache-key))
-	 (when (tNFA-regexp-match
-		arg key :test (dictree--comparison-function dict))
-	   (setq reverse (cdr cache-key))
-	   (cond
-	    ;; if updating dirty cache entries...
-	    ((eq (dictree-cache-update-policy dict) 'synchronize)
-	     (dictree--synchronize-regexp-cache
-	      dict cache-entry arg reverse key newdata deleted))
-	    ;; if deleting dirty cache entries...
-	    (t (remhash (cons arg reverse) cache)))))
-       cache))
-
-    ;; synchronize the ranked regexp cache, if it exists
-    (when (dictree-regexp-ranked-cache-threshold dict)
-      (setq cache (dictree-regexp-ranked-cache dict))
-      ;; have to check every cache entry to see if it matches
-      (maphash
-       (lambda (cache-key cache-entry)
-	 (setq arg (car cache-key))
-	 (when (tNFA-regexp-match
-		arg key :test (dictree--comparison-function dict))
-	   (setq reverse (cdr cache-key))
-	   (cond
-	    ;; if updating dirty cache entries...
-	    ((eq (dictree-cache-update-policy dict) 'synchronize)
-	     (dictree--synchronize-ranked-regexp-cache
-	      dict cache-entry arg reverse key newdata deleted))
-	    ;; if deleting dirty cache entries...
-	    (t (remhash (cons arg reverse) cache)))))
-       cache))
-    ))
+	(maphash
+	 (lambda (cache-key cache-entry)
+	   (setq arg (nth 0 cache-key)
+		 auxargs (nth 1 cache-key))
+	   (when (apply (nth 2 cachefuns)
+			(append (list arg) auxargs (list key)))
+	     (setq reverse (nth 2 cache-key))
+	     (cond
+	      ;; updating dirty cache entries
+	      ((eq (dictree-cache-update-policy dict) 'synchronize)
+	       (funcall (nth 1 cachefuns) dict cache-entry
+			arg auxargs reverse key newdata deleted))
+	      ;; deleting dirty cache entries
+	      (t (remhash (list arg auxargs reverse)
+			  (funcall (nth 0 cachefuns) dict))))))
+	 (funcall (nth 0 cachefuns) dict)))
+      )))
 
 
 
 (defun dictree--synchronize-completion-cache
-  (dict cache-entry arg reverse key newdata deleted)
+  (dict cache-entry arg auxargs reverse key newdata deleted)
   ;; Synchronize DICT's completion CACHE-ENTRY for ARG and REVERSE, for
   ;; a KEY whose data was either updated to NEWDATA or DELETED.
   (let* ((completions (dictree--cache-results cache-entry))
@@ -1279,78 +1164,73 @@ PREFIX is a prefix of STR."
      ;; deleted and in cached result: remove cache entry and re-run the
      ;; same completion to update the cache
      ((and deleted cmpl)
-      (remhash (cons arg reverse) (dictree-complete-cache dict))
+      (remhash (list arg auxargs reverse) (dictree-complete-cache dict))
       (dictree-complete dict arg nil maxnum reverse))
      ;; modified and not in cached result: merge it into the completion
      ;; list, retaining only the first maxnum
      ((and (not deleted) (not cmpl))
-      (dictree--cache-set-completions
-       cache-entry
-       (dictree--merge
-	(list (cons key newdata)) completions
-	`(lambda (a b)
-	   (,(trie-construct-sortfun
-	      (dictree-comparison-function dict))
-	    (car a) (car b)))
-	(when (dictree--meta-dict-p dict)
-	  (dictree--meta-dict-combfun dict))
-	maxnum)))
-     ;; modified and in the cached result: update the associated data if
-     ;; dict is a meta-dictionary (this is done automatically for a
-     ;; normal dict)
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key newdata)) completions
+	     `(lambda (a b)
+		(,(trie-construct-sortfun
+		   (dictree-comparison-function dict))
+		 (car a) (car b)))
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this happens automatically for a normal dict)
      ((and (not deleted) cmpl (dictree--meta-dict-p dict))
       (setcdr cmpl newdata))
      ;; deleted and not in cached result: requires no action
      )))
 
 
-
 (defun dictree--synchronize-ranked-completion-cache
-  (dict cache-entry arg reverse key newdata deleted)
-  ;; Synchronize DICT's ranked completion CACHE-ENTRY for ARG and
-  ;; REVERSE, for a KEY whose data was either updated to NEWDATA or
-  ;; DELETED.
+  (dict cache-entry arg auxargs reverse key newdata deleted)
+  ;; Synchronize DICT's ranked completion CACHE-ENTRY for ARG and REVERSE, for
+  ;; a KEY whose data was either updated to NEWDATA or DELETED.
   (let* ((completions (dictree--cache-results cache-entry))
 	 (maxnum (dictree--cache-maxnum cache-entry))
-	 (cmpl (assoc key completions))
-	 (cache (dictree--complete-ranked-cache dict)))
+	 (cmpl (assoc key completions)))
     ;; if key was...
     (cond
-     ;; deleted and in cached result: remove cache entry and re-run the
-     ;; same query to update the cache
+     ;; deleted and in cached result: remove cache entry and re-run the same
+     ;; query to update the cache
      ((and deleted cmpl)
-      (remhash (cons arg reverse) cache)
+      (remhash (list arg auxargs reverse)
+	       (dictree--complete-ranked-cache dict))
       (dictree-complete dict arg 'ranked maxnum reverse))
-     ;; modified and not in cached result: merge it into the completion
-     ;; list, retaining only the first maxnum
+     ;; modified and not in cached result: merge it into the completion list,
+     ;; retaining only the first maxnum
      ((and (not deleted) (not cmpl))
-      (dictree--cache-set-completions
-       cache-entry
-       (dictree--merge
-	(list (cons key newdata)) completions
-	(dictree-rankfun dict)
-	(when (dictree--meta-dict-p dict)
-	  (dictree--meta-dict-combfun dict))
-	maxnum)))
-     ;; modified and in the cached result: update the associated data if
-     ;; dict is a meta-dictionary (this is done automatically for a
-     ;; normal dict), re-sort, and if key is now at end of list re-run
-     ;; the same query to update the cache
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key newdata)) completions
+	     (dictree-rankfun dict)
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this happens automatically for a normal dict),
+     ;; re-sort, and if key is now at end of list re-run the same query to
+     ;; update the cache
      ((and (not deleted) cmpl)
       (when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
-      (dictree--cache-set-completions
-       cache-entry (sort completions (dictree-rankfun dict)))
+      (setf (dictree--cache-results cache-entry)
+	    (sort completions (dictree-rankfun dict)))
       (when (equal key (car (last completions)))
-	(remhash (cons arg reverse) cache)
+	(remhash (cons arg reverse) (dictree--complete-ranked-cache dict))
 	(dictree-complete dict arg 'ranked maxnum reverse)))
      ;; deleted and not in cached result: requires no action
      )))
 
 
 (defun dictree--synchronize-regexp-cache
-  (dict cache-entry arg reverse key newdata deleted)
-  ;; Synchronize DICT's completion CACHE-ENTRY for ARG and REVERSE, for
-  ;; a KEY whose data was either updated to NEWDATA or DELETED.
+  (dict cache-entry regexp auxargs reverse key newdata deleted)
+  ;; Synchronize DICT's completion CACHE-ENTRY for REGEXP and REVERSE, for a
+  ;; KEY whose data was either updated to NEWDATA or DELETED.
   (let* ((completions (dictree--cache-results cache-entry))
 	 (maxnum (dictree--cache-maxnum cache-entry))
 	 group-data
@@ -1367,28 +1247,27 @@ PREFIX is a prefix of STR."
      ;; deleted and in cached result: remove cache entry and re-run the
      ;; same completion to update the cache
      ((and deleted cmpl)
-      (remhash (cons arg reverse) (dictree-complete-cache dict))
-      (dictree-regexp-search dict arg nil maxnum reverse))
+      (remhash (list regexp auxargs reverse) (dictree-complete-cache dict))
+      (dictree-regexp-search dict regexp nil maxnum reverse))
      ;; modified and not in cached result: merge it into the completion
      ;; list, retaining only the first maxnum
      ((and (not deleted) (not cmpl))
       (save-match-data
 	(set-match-data nil)
-	(tNFA-regexp-match arg key
+	(tNFA-regexp-match regexp key
 			   :test (dictree--comparison-function dict))
 	(when (setq group-data (nthcdr 2 (match-data)))
 	  (setq key (cons key group-data))))
-      (dictree--cache-set-completions
-       cache-entry
-       (dictree--merge
-	(list (cons key newdata)) completions
-	`(lambda (a b)
-	   (,(trie-construct-sortfun (dictree-comparison-function dict))
-	    ,(if group-data '(caar a) '(car a))
-	    ,(if group-data '(caar b) '(car b))))
-	(when (dictree--meta-dict-p dict)
-	  (dictree--meta-dict-combfun dict))
-	maxnum)))
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key newdata)) completions
+	     `(lambda (a b)
+		(,(trie-construct-sortfun (dictree-comparison-function dict))
+		 ,(if group-data '(caar a) '(car a))
+		 ,(if group-data '(caar b) '(car b))))
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
      ;; modified and in the cached result: update the associated data if
      ;; dict is a meta-dictionary (this is done automatically for a
      ;; normal dict)
@@ -1400,9 +1279,9 @@ PREFIX is a prefix of STR."
 
 
 (defun dictree--synchronize-ranked-regexp-cache
-  (dict cache-entry arg reverse key newdata deleted)
-  ;; Synchronize DICT's ranked regexp CACHE-ENTRY for ARG and REVERSE,
-  ;; for a KEY whose data was either updated to NEWDATA or DELETED.
+  (dict cache-entry regexp auxargs reverse key newdata deleted)
+  ;; Synchronize DICT's ranked regexp CACHE-ENTRY for REGEXP and REVERSE, for
+  ;; a KEY whose data was either updated to NEWDATA or DELETED.
   (let ((completions (dictree--cache-results cache-entry))
 	(maxnum (dictree--cache-maxnum cache-entry))
 	(cache (dictree--regexp-ranked-cache dict))
@@ -1422,43 +1301,204 @@ PREFIX is a prefix of STR."
      ;; deleted and in cached result: remove cache entry and re-run the
      ;; same query to update the cache
      ((and deleted cmpl)
-      (remhash (cons arg reverse) cache)
-      (dictree-regexp-search dict arg 'ranked maxnum reverse))
+      (remhash (list regexp auxargs reverse) cache)
+      (dictree-regexp-search dict regexp 'ranked maxnum reverse))
      ;; modified and not in cached result: merge it into the completion
      ;; list, retaining only the first maxnum
      ((and (not deleted) (not cmpl))
       (save-match-data
 	(set-match-data nil)
-	(tNFA-regexp-match arg key
+	(tNFA-regexp-match regexp key
 			   :test (dictree--comparison-function dict))
 	(when (setq group-data (nthcdr 2 (match-data)))
 	  (setq key (cons key group-data))))
-      (dictree--cache-set-completions
-       cache-entry
-       (dictree--merge
-	(list (cons key newdata)) completions
-	(dictree-rankfun dict)
-	(when (dictree--meta-dict-p dict)
-	  (dictree--meta-dict-combfun dict))
-	maxnum)))
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key newdata)) completions
+	     (dictree-rankfun dict)
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
      ;; modified and in the cached result: update the associated data if
      ;; dict is a meta-dictionary (this is done automatically for a
      ;; normal dict), re-sort, and if key is now at end of list re-run
      ;; the same query to update the cache
      ((and (not deleted) cmpl)
       (when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
-      (dictree--cache-set-completions
-       cache-entry
-       (sort completions
-	     (if group-data
-		 `(lambda (a b)
-		    (,(dictree-rankfun dict)
-		     (cons (caar a) (cdr a))
-		     (cons (caar b) (cdr b))))
-	       (dictree-rankfun dict))))
+      (setq (dictree--cache-results cache-entry)
+	    (sort completions
+		  (if group-data
+		      `(lambda (a b)
+			 (,(dictree-rankfun dict)
+			  (cons (caar a) (cdr a))
+			  (cons (caar b) (cdr b))))
+		    (dictree-rankfun dict))))
       (when (equal key (car (last completions)))
-	(remhash (cons arg reverse) cache)
-	(dictree-complete dict arg 'ranked maxnum reverse)))
+	(remhash (cons regexp reverse) cache)
+	(dictree-regexp-search dict regexp 'ranked maxnum reverse)))
+     ;; deleted and not in cached result: requires no action
+     )))
+
+
+(defun dictree--synchronize-fuzzy-match-cache
+  (dict cache-entry string auxargs reverse key newdata deleted)
+  ;; Synchronize DICT's fuzzy match CACHE-ENTRY for STRING, AUXARGS and
+  ;; REVERSE, for a KEY whose data was either updated to NEWDATA or DELETED.
+  (let* ((matches (dictree--cache-results cache-entry))
+	 (maxnum (dictree--cache-maxnum cache-entry))
+	 (match (assoc key matches))
+	 (distance (Lewenstein-distance key string)))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the
+     ;; same completion to update the cache
+     ((and deleted match)
+      (remhash (list string auxargs reverse)
+	       (dictree-fuzzy-match-cache dict))
+      (dictree-fuzzy-match dict string (car auxargs) nil maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion
+     ;; list, retaining only the first maxnum
+     ((and (not deleted) (not match))
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key (cons distance newdata))) matches
+	     `(lambda (a b)
+		(,(trie-construct-sortfun
+		   (dictree-comparison-function dict))
+		 (car a) (car b)))
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this happens automatically for a normal dict)
+     ((and (not deleted) match (dictree--meta-dict-p dict))
+      (setcdr match newdata))
+     ;; deleted and not in cached result: requires no action
+     )))
+
+
+
+(defun dictree--synchronize-ranked-fuzzy-match-cache
+  (dict cache-entry string auxargs reverse key newdata deleted)
+  ;; Synchronize DICT's ranked completion CACHE-ENTRY for STRING and REVERSE, for
+  ;; a KEY whose data was either updated to NEWDATA or DELETED.
+  (let* ((matches (dictree--cache-results cache-entry))
+	 (maxnum (dictree--cache-maxnum cache-entry))
+	 (match (assoc key matches))
+	 (distance (Lewenstein-distance key string)))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the same
+     ;; query to update the cache
+     ((and deleted match)
+      (remhash (list string auxargs reverse)
+	       (dictree--fuzzy-match-ranked-cache dict))
+      (dictree-fuzzy-match dict string (car auxargs) 'ranked maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion list,
+     ;; retaining only the first maxnum
+     ((and (not deleted) (not match))
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key (cons distance newdata))) matches
+	     (dictree-rankfun dict)
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this happens automatically for a normal dict),
+     ;; re-sort, and if key is now at end of list re-run the same query to
+     ;; update the cache
+     ((and (not deleted) match)
+      (when (dictree--meta-dict-p dict) (setcdr match newdata))
+      (setf (dictree--cache-results cache-entry)
+	    (sort matches (dictree-rankfun dict)))
+      (when (equal key (car (last matches)))
+	(remhash (list string auxargs reverse)
+		 (dictree--fuzzy-match-ranked-cache dict))
+	(dictree-fuzzy-match dict string (car auxargs)
+			     'ranked maxnum reverse)))
+     ;; deleted and not in cached result: requires no action
+     )))
+
+
+(defun dictree--synchronize-fuzzy-complete-cache
+  (dict cache-entry prefix auxargs reverse key newdata deleted)
+  ;; Synchronize DICT's fuzzy complete CACHE-ENTRY for PREFIX, AUXARGS and
+  ;; REVERSE, for a KEY whose data was either updated to NEWDATA or DELETED.
+  (let* ((completions (dictree--cache-results cache-entry))
+	 (maxnum (dictree--cache-maxnum cache-entry))
+	 (cmpl (assoc key completions))
+	 (distance (Lewenstein-distance key prefix)))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the
+     ;; same completion to update the cache
+     ((and deleted cmpl)
+      (remhash (list prefix auxargs reverse)
+	       (dictree-fuzzy-complete-cache dict))
+      (dictree-fuzzy-complete dict prefix (car auxargs) nil maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion
+     ;; list, retaining only the first maxnum
+     ((and (not deleted) (not cmpl))
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key (cons distance newdata))) completions
+	     `(lambda (a b)
+		(,(trie-construct-sortfun
+		   (dictree-comparison-function dict))
+		 (car a) (car b)))
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this happens automatically for a normal dict)
+     ((and (not deleted) cmpl (dictree--meta-dict-p dict))
+      (setcdr cmpl newdata))
+     ;; deleted and not in cached result: requires no action
+     )))
+
+
+
+(defun dictree--synchronize-ranked-fuzzy-complete-cache
+  (dict cache-entry prefix auxargs reverse key newdata deleted)
+  ;; Synchronize DICT's ranked completion CACHE-ENTRY for PREFIX and REVERSE, for
+  ;; a KEY whose data was either updated to NEWDATA or DELETED.
+  (let* ((completions (dictree--cache-results cache-entry))
+	 (maxnum (dictree--cache-maxnum cache-entry))
+	 (cmpl (assoc key completions))
+	 (distance (Lewenstein-distance key prefix)))
+    ;; if key was...
+    (cond
+     ;; deleted and in cached result: remove cache entry and re-run the same
+     ;; query to update the cache
+     ((and deleted cmpl)
+      (remhash (list prefix auxargs reverse)
+	       (dictree--fuzzy-complete-ranked-cache dict))
+      (dictree-fuzzy-complete dict prefix (car auxargs)
+			      'ranked maxnum reverse))
+     ;; modified and not in cached result: merge it into the completion list,
+     ;; retaining only the first maxnum
+     ((and (not deleted) (not cmpl))
+      (setf (dictree--cache-results cache-entry)
+	    (dictree--merge
+	     (list (cons key (cons distance newdata))) completions
+	     (dictree-rankfun dict)
+	     (when (dictree--meta-dict-p dict)
+	       (dictree--meta-dict-combfun dict))
+	     maxnum)))
+     ;; modified and in the cached result: update the associated data if dict
+     ;; is a meta-dictionary (this happens automatically for a normal dict),
+     ;; re-sort, and if key is now at end of list re-run the same query to
+     ;; update the cache
+     ((and (not deleted) cmpl)
+      (when (dictree--meta-dict-p dict) (setcdr cmpl newdata))
+      (setf (dictree--cache-results cache-entry)
+	    (sort completions (dictree-rankfun dict)))
+      (when (equal key (car (last completions)))
+	(remhash (list prefix auxargs reverse)
+		 (dictree--fuzzy-complete-ranked-cache dict))
+	(dictree-fuzzy-complete dict prefix (car auxargs)
+				'ranked maxnum reverse)))
      ;; deleted and not in cached result: requires no action
      )))
 
@@ -1472,7 +1512,11 @@ PREFIX is a prefix of STR."
 		      dictree-complete-cache
 		      dictree-complete-ranked-cache
 		      dictree-regexp-cache
-		      dictree-regexp-ranked-cache))
+		      dictree-regexp-ranked-cache
+		      dictree-fuzzy-match-cache
+		      dictree-fuzzy-match-ranked-cache
+		      dictree-fuzzy-complete-cache
+		      dictree-fuzzy-complete-ranked-cache))
     (when (funcall cachefun dict)
       (clrhash (funcall cachefun dict))))
   (when (called-interactively-p 'interactive)
@@ -1543,12 +1587,12 @@ also `dictree-member-p' for testing existence alone.)"
 	(setq data (trie-member (dictree--trie dict) key flag))
 	(setq time (- (float-time) time))))
 
-      ;; if lookup found something, and we're above the lookup
-      ;; cache-threshold, cache the result
+      ;; if lookup found something, and we're above the cache-threshold, cache
+      ;; the result
       (when (and (not (eq data flag))
 		 (dictree--above-cache-threshold-p
 		  time (length key) (dictree-cache-policy dict)
-		  (dictree-lookup-cache-threshold dict) 'long-keys))
+		  (dictree-cache-threshold dict) 'long-keys))
 	(setf (dictree-modified dict) t)
 	(puthash key data (dictree-lookup-cache dict))))
 
@@ -1667,8 +1711,8 @@ for side-effects only.
 FUNCTION will be passed two arguments: a key of type TYPE
 \(string, vector, or list, defaulting to vector\) from the
 dictionary, and the data associated with that key. The dictionary
-entries will be traversed in \"lexical\" order, i.e. the order
-defined by the dictionary's comparison function (cf.
+entries will be traversed in \"lexicographic\" order, i.e. the
+order defined by the dictionary's comparison function (cf.
 `dictree-create').
 
 If TYPE is string, it must be possible to apply the function
@@ -1733,7 +1777,7 @@ function `string' to the individual elements of key sequences
 stored in DICT.
 
 The FUNCTION will be applied and the results combined in
-asscending \"lexical\" order (i.e. the order defined by the
+asscending \"lexicographic\" order (i.e. the order defined by the
 dictionary's comparison function; cf. `dictree-create'), or
 descending order if REVERSE is non-nil.
 
@@ -1782,8 +1826,8 @@ function `string' to the individual elements of key sequences
 stored in DICT.
 
 The FUNCTION will be applied and the results combined in
-asscending \"lexical\" order \(i.e. the order defined by the
-dictionary's comparison function; cf. `dictree-create'\), or
+asscending \"lexicographic\" order \(i.e. the order defined by
+the dictionary's comparison function; cf. `dictree-create'\), or
 descending order if REVERSE is non-nil.
 
 Note that if you don't care about the order in which FUNCTION is
@@ -1819,11 +1863,10 @@ Interactively, DICT is read from the mini-buffer."
 ;; ----------------------------------------------------------------
 ;;                        Using dictrees as stacks
 
-;; A dictree--meta-stack is the meta-dict version of a dictree-stack
-;; (the ordinary version is just a single trie-stack). It consists of a
-;; heap of trie-stacks for its constituent tries, where the heap order
-;; is the usual lexical order over the keys at the top of the
-;; trie-stacks.
+;; A dictree--meta-stack is the meta-dict version of a dictree-stack (the
+;; ordinary version is just a single trie-stack). It consists of a heap of
+;; trie-stacks for its constituent tries, where the heap order is the usual
+;; lexicographic order over the keys at the top of the trie-stacks.
 
 (defstruct
   (dictree--meta-stack
@@ -1879,6 +1922,42 @@ Interactively, DICT is read from the mini-buffer."
 			       (unless (trie-stack-empty-p stack)
 				 (heap-add heap stack))))
 			   (dictree--trielist dict)))))
+      (:constructor dictree--fuzzy-match-meta-stack-create
+		 (dict string distance &optional reverse
+		  &aux
+		  (combfun (dictree--meta-dict-combfun dict))
+		  (sortfun (trie-construct-sortfun
+			    (dictree-comparison-function dict)))
+		  (heap (heap-create
+			 (dictree--construct-meta-stack-heapfun
+			  sortfun reverse)
+			 (length (dictree--trielist dict))))
+		  (pushed '())
+		  (_dummy (mapc
+			   (lambda (trie)
+			     (let ((stack (trie-fuzzy-match-stack
+					   trie string distance reverse)))
+			       (unless (trie-stack-empty-p stack)
+				 (heap-add heap stack))))
+			   (dictree--trielist dict)))))
+      (:constructor dictree--fuzzy-complete-meta-stack-create
+		 (dict prefix distance &optional reverse
+		  &aux
+		  (combfun (dictree--meta-dict-combfun dict))
+		  (sortfun (trie-construct-sortfun
+			    (dictree-comparison-function dict)))
+		  (heap (heap-create
+			 (dictree--construct-meta-stack-heapfun
+			  sortfun reverse)
+			 (length (dictree--trielist dict))))
+		  (pushed '())
+		  (_dummy (mapc
+			   (lambda (trie)
+			     (let ((stack (trie-fuzzy-complete-stack
+					   trie prefix distance reverse)))
+			       (unless (trie-stack-empty-p stack)
+				 (heap-add heap stack))))
+			   (dictree--trielist dict)))))
    (:copier nil))
   combfun sortfun heap pushed)
 
@@ -1897,10 +1976,10 @@ Interactively, DICT is read from the mini-buffer."
 (defun dictree-stack (dict &optional type reverse)
   "Create an object that allows DICT to be accessed as a stack.
 
-The stack is sorted in \"lexical\" order, i.e. the order defined
-by the DICT's comparison function, or in reverse order if REVERSE
-is non-nil. Calling `dictree-stack-pop' pops the top element (a
-key and its associated data) from the stack.
+The stack is sorted in \"lexicographic\" order, i.e. the order
+defined by the DICT's comparison function, or in reverse order if
+REVERSE is non-nil. Calling `dictree-stack-pop' pops the top
+element (a key and its associated data) from the stack.
 
 Optional argument TYPE (one of the symbols vector, lisp or
 string) sets the type of sequence used for the keys.
@@ -1925,29 +2004,29 @@ those instead."
   "Return an object that allows completions of PREFIX to be accessed
 as if they were a stack.
 
-The stack is sorted in \"lexical\" order, i.e. the order defined
-by DICT's comparison function, or in reverse order if REVERSE is
-non-nil. Calling `dictree-stack-pop' pops the top element (a key
-and its associated data) from the stack.
+The stack is sorted in \"lexicographic\" order, i.e. the order
+defined by DICT's comparison function, or in reverse order if
+REVERSE is non-nil. Calling `dictree-stack-pop' pops the top
+element (a key and its associated data) from the stack.
 
 PREFIX must be a sequence (vector, list or string) that forms the
-initial part of a TRIE key. (If PREFIX is a string, it must be
-possible to apply `string' to individual elements of TRIE keys.)
+initial part of a DICT key. (If PREFIX is a string, it must be
+possible to apply `string' to individual elements of DICT keys.)
 The completions returned in the alist will be sequences of the
 same type as KEY. If PREFIX is a list of sequences, completions
 of all sequences in the list are included in the stack. All
 sequences in the list must be of the same type.
 
 Note that any modification to DICT *immediately* invalidates all
-trie-stacks created before the modification (in particular,
+dictree-stacks created before the modification (in particular,
 calling `dictree-stack-pop' will give unpredictable results).
 
 Operations on dictree-stacks are significantly more efficient
 than constructing a real stack from completions of PREFIX in DICT
 and using standard stack functions. As such, they can be useful
-in implementing efficient algorithms on tries. However, in cases
-where `dictree-complete' or `dictree-complete-ordered' is
-sufficient, it is better to use one of those instead."
+in implementing efficient algorithms on dict-trees. However, in
+cases where `dictree-complete' is sufficient, it is better to use
+that instead."
   (if (dictree--meta-dict-p dict)
       (dictree--complete-meta-stack-create dict prefix reverse)
     (trie-complete-stack (dictree--trie dict) prefix reverse)))
@@ -1957,18 +2036,18 @@ sufficient, it is better to use one of those instead."
   "Return an object that allows REGEXP matches to be accessed
 as if they were a stack.
 
-The stack is sorted in \"lexical\" order, i.e. the order defined
-by DICT's comparison function, or in reverse order if REVERSE is
-non-nil. Calling `dictree-stack-pop' pops the top element (a key
-and its associated data) from the stack.
+The stack is sorted in \"lexicographic\" order, i.e. the order
+defined by DICT's comparison function, or in reverse order if
+REVERSE is non-nil. Calling `dictree-stack-pop' pops the top
+element (a key and its associated data) from the stack.
 
 REGEXP is a regular expression, but it need not necessarily be a
 string. It must be a sequence (vector, list of string) whose
 elements are either elements of the same type as elements of the
-trie keys (which behave as literals in the regexp), or any of the
-usual regexp special characters and backslash constructs. If
+keys in DICT (which behave as literals in the regexp), or any of
+the usual regexp special characters and backslash constructs. If
 REGEXP is a string, it must be possible to apply `string' to
-individual elements of the keys stored in the trie. The matches
+individual elements of the keys stored in DICT. The matches
 returned in the alist will be sequences of the same type as KEY.
 
 Back-references and non-greedy postfix operators are *not*
@@ -1983,18 +2062,85 @@ are cons cells whose cars and cdrs give the start and end indices
 of the elements that matched the corresponding groups, in order.
 
 Note that any modification to DICT *immediately* invalidates all
-trie-stacks created before the modification (in particular,
+dictree-stacks created before the modification (in particular,
 calling `dictree-stack-pop' will give unpredictable results).
 
 Operations on dictree-stacks are significantly more efficient
 than constructing a real stack from completions of PREFIX in DICT
 and using standard stack functions. As such, they can be useful
-in implementing efficient algorithms on tries. However, in cases
-where `dictree-complete' or `dictree-complete-ordered' is
-sufficient, it is better to use one of those instead."
+in implementing efficient algorithms on dict-trees. However, in
+cases where `dictree-regexp-search' is sufficient, it is better
+to use that instead."
   (if (dictree--meta-dict-p dict)
       (dictree--regexp-meta-stack-create dict regexp reverse)
     (trie-regexp-stack (dictree--trie dict) regexp reverse)))
+
+
+(defun dictree-fuzzy-match-stack (dict string distance &optional reverse)
+  "Return an object that allows fuzzy matches to be accessed
+as if they were a stack.
+
+The stack is sorted in \"lexicographic\" order, i.e. the order
+defined by DICT's comparison function, or in reverse order if
+REVERSE is non-nil. Calling `dictree-stack-pop' pops the top
+element (a key and its associated data) from the stack.
+
+STRING must be a sequence (vector, list or string), and DISTANCE
+must be an integer. (If STRING is a string, it must be possible
+to apply `string' to individual elements of DICT keys.) The
+matches returned in the alist will be sequences of the same type
+as STRING that are within Lewenstein distance DISTANCE of
+STRING. If STRING is a list of sequences, keys withing DISTANCE
+of any sequences in the list are included in the stack. All
+sequences in the list must be of the same type.
+
+Note that any modification to DICT *immediately* invalidates all
+dictree-stacks created before the modification (in particular,
+calling `dictree-stack-pop' will give unpredictable results).
+
+Operations on dictree-stacks are significantly more efficient
+than constructing a real stack from fuzzy matches within DISTANCE
+of STRING in DICT and using standard stack functions. As such,
+they can be useful in implementing efficient algorithms on
+dict-trees. However, in cases where `dictree-fuzzy-match' is
+sufficient, it is better to use that instead."
+  (if (dictree--meta-dict-p dict)
+      (dictree--fuzzy-match-meta-stack-create dict string distance reverse)
+    (trie-fuzzy-match-stack (dictree--trie dict) string distance reverse)))
+
+
+(defun dictree-fuzzy-complete-stack (dict prefix distance &optional reverse)
+  "Return an object that allows fuzzy completions to be accessed
+as if they were a stack.
+
+The stack is sorted in \"lexicographic\" order, i.e. the order
+defined by DICT's comparison function, or in reverse order if
+REVERSE is non-nil. Calling `dictree-stack-pop' pops the top
+element (a key and its associated data) from the stack.
+
+PREFIX must be a sequence (vector, list or string), and DISTANCE
+must be an integer. (If PREFIX is a string, it must be possible
+to apply `string' to individual elements of DICT keys.) The
+completions returned in the alist will be sequences of the same
+type as STRING that are completions of prefixes within Lewenstein
+distance DISTANCE of PREFIX. If PREFIX is a list of sequences,
+completions within DISTANCE of any prefix in the list are
+included in the stack. All sequences in the list must be of the
+same type.
+
+Note that any modification to DICT *immediately* invalidates all
+trie-stacks created before the modification (in particular,
+calling `dictree-stack-pop' will give unpredictable results).
+
+Operations on dictree-stacks are significantly more efficient
+than constructing a real stack from fuzzy matches within DISTANCE
+of STRING in DICT and using standard stack functions. As such,
+they can be useful in implementing efficient algorithms on
+dict-trees. However, in cases where `dictree-fuzzy-complete' is
+sufficient, it is better to use that instead."
+  (if (dictree--meta-dict-p dict)
+      (dictree--fuzzy-complete-meta-stack-create dict prefix distance reverse)
+    (trie-fuzzy-complete-stack (dictree--trie dict) prefix distance reverse)))
 
 
 (defun dictree-stack-pop (dictree-stack)
@@ -2123,19 +2269,20 @@ Returns nil if the stack is empty."
 ;;             Functions for building advanced queries
 
 (defun dictree--query
-  (dict arg cachefun cacheparamfun triefun stackfun
+  (dict arg auxargs cachefun cache-long triefun stackfun
    &optional rank-function maxnum reverse no-cache filter resultfun)
-  ;; Return results of querying DICT with argument ARG using TRIEFUN or
-  ;; STACKFUN. If result of calling CACHEPARAMFUN on DICT is non-nil, look
-  ;; first for cached result in cache returned by calling CACHEFUN on DICT,
-  ;; and cache result if query fulfils caching conditions. If RANK-FUNCTION is
-  ;; non-nil, return results ordered accordingly. If MAXNUM is an integer,
-  ;; only the first MAXNUM results will be returned. If REVERSE is non-nil,
-  ;; results are in reverse order. A non-nil NO-CACHE prevents caching of
-  ;; results, irrespective of DICT's cache settings. If FILTER is supplied,
-  ;; only results that pass FILTER are included. A non-nil RESULTFUN is
-  ;; applied to results before adding them to final results list. Otherwise,
-  ;; an alist of key-data associations is returned.
+  ;; Return results of querying DICT with argument ARG (and AUXARGS list, if
+  ;; any) using TRIEFUN or STACKFUN. If DICT's cache-threshold is non-nil,
+  ;; look first for cached result in cache returned by calling CACHEFUN on
+  ;; DICT, and cache result if query fulfils caching conditions. Non-nil
+  ;; CACHE-LONG indicates long ARGs should be cached, rather than short
+  ;; ARGs. If RANK-FUNCTION is non-nil, return results ordered accordingly. If
+  ;; MAXNUM is an integer, only the first MAXNUM results will be returned. If
+  ;; REVERSE is non-nil, results are in reverse order. A non-nil NO-CACHE
+  ;; prevents caching of results, irrespective of DICT's cache settings. If
+  ;; FILTER is supplied, only results that pass FILTER are included. A non-nil
+  ;; RESULTFUN is applied to results before adding them to final results
+  ;; list. Otherwise, an alist of key-data associations is returned.
 
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
@@ -2144,7 +2291,7 @@ Returns nil if the stack is empty."
     ;; map over all dictionaries in list
     (dolist (dic dict)
       (setq cache (funcall cachefun dic)
-	    cacheparam (funcall cacheparamfun dic))
+	    cacheparam (dictree--cache-threshold dic))
       (cond
        ;; If FILTER or custom RANK-FUNCTION was specified, look in trie since
        ;; we don't cache custom searches. We pass a slightly redefined filter
@@ -2153,17 +2300,16 @@ Returns nil if the stack is empty."
 	    (and rank-function
 		 (not (eq rank-function (dictree-rank-function dic)))))
 	(setq res
-	      (dictree--do-query dic arg triefun stackfun
+	      (dictree--do-query dic arg auxargs triefun stackfun
 				 (dictree--wrap-rankfun rank-function)
 				 maxnum reverse
 				 (when filter
 				   (dictree--wrap-filter filter)))))
 
-
        ;; if there's a cache entry with enough results, use it
        ((and (setq cache-entry
 		   (if cacheparam
-		       (gethash (cons arg reverse) cache)
+		       (gethash (list arg auxargs reverse) cache)
 		     nil))
 	     (or (null (dictree--cache-maxnum cache-entry))
 		 (and maxnum
@@ -2175,14 +2321,13 @@ Returns nil if the stack is empty."
 		       (> (dictree--cache-maxnum cache-entry) maxnum)))
 	  (setcdr (nthcdr (1- maxnum) results) nil)))
 
-
        ;; if there was nothing useful in the cache, do query and time it
        (t
 	(let (time)
 	  (setq time (float-time))
 	  (setq res
 		(dictree--do-query
-		 dic arg triefun stackfun
+		 dic arg auxargs triefun stackfun
 		 (when rank-function
 		   (dictree--wrap-rankfun rank-function))
 		 maxnum reverse nil))
@@ -2191,9 +2336,9 @@ Returns nil if the stack is empty."
 	  (when (and (not no-cache)
 		     (dictree--above-cache-threshold-p
 		      time (length arg) (dictree-cache-policy dic)
-		      cacheparam))
+		      cacheparam cache-long))
 	    (setf (dictree-modified dic) t)
-	    (puthash (cons arg reverse)
+	    (puthash (list arg auxargs reverse)
 		     (dictree--cache-create res maxnum)
 		     cache)))))
 
@@ -2220,14 +2365,16 @@ Returns nil if the stack is empty."
 
 
 (defun dictree--do-query
-  (dict arg triefun stackfun &optional rank-function maxnum reverse filter)
-  ;; Return first MAXNUM results of querying DICT with ARG using TRIEFUN
-  ;; or STACKFUN that satisfy FILTER, ordered according to RANK-FUNCTION
-  ;; (defaulting to "lexical" order).
+    (dict arg auxargs triefun stackfun
+	  &optional rank-function maxnum reverse filter)
+  ;; Return first MAXNUM results of querying DICT with argument ARG (and
+  ;; AUXARGS list, if any) using TRIEFUN or STACKFUN that satisfy FILTER,
+  ;; ordered according to RANK-FUNCTION (defaulting to "lexicographic" order).
 
   ;; for a meta-dict, use a dictree-stack
   (if (dictree--meta-dict-p dict)
-      (let ((stack (funcall stackfun dict arg reverse))
+      (let ((stack (apply stackfun
+			  (append (list dict arg) auxargs (list reverse))))
 	    (heap (when rank-function
 		    (heap-create   ; heap order is inverse of rank order
 			(if reverse
@@ -2243,10 +2390,10 @@ Returns nil if the stack is empty."
 	  (when (or (null filter) (funcall filter res))
 	    (if rank-function
 		(heap-add heap res)   ; for ranked query, add to heap
-	      (push res results)) ; for lexical query, add to list
+	      (push res results)) ; for lexicographic query, add to list
 	    (incf i)))
 	(if (null rank-function)
-	    ;; for lexical query, reverse and return result list (we
+	    ;; for lexicographic query, reverse and return result list (we
 	    ;; built it backwards)
 	    (nreverse results)
 	  ;; for ranked query, pass rest of results through heap
@@ -2261,9 +2408,9 @@ Returns nil if the stack is empty."
     ;; for a normal dict, call corresponding trie function on dict's
     ;; trie. Note: could use a dictree-stack here too - would it be more
     ;; efficient?
-    (funcall triefun
-	     (dictree--trie dict) arg rank-function
-	     maxnum reverse filter)))
+    (apply triefun
+	   (append (list (dictree--trie dict) arg) auxargs
+		   (list rank-function maxnum reverse filter)))))
 
 
 
@@ -2276,12 +2423,12 @@ Returns nil if the stack is empty."
    &optional rank-function maxnum reverse no-cache filter resultfun)
   "Return an alist containing all completions of PREFIX in DICT
 along with their associated data, sorted according to
-RANK-FUNCTION (defaulting to \"lexical\" order, i.e. the order
-defined by the dictionary's comparison function,
+RANK-FUNCTION (defaulting to \"lexicographic\" order, i.e. the
+order defined by the dictionary's comparison function,
 cf. `dictree-create'). Return nil if no completions are found.
 
-PREFIX can also be a list of sequences, in which case completions of
-all elements in the list are returned, merged together in a
+PREFIX can also be a list of sequences, in which case completions
+of all elements in the list are returned, merged together in a
 single sorted alist.
 
 DICT can also be a list of dictionaries, in which case
@@ -2322,13 +2469,9 @@ value is what gets added to the final result list, instead of the
 default key-data cons cell."
   ;; run completion query
   (dictree--query
-   dict prefix
-   (if rank-function
-       #'dictree-complete-ranked-cache
-     #'dictree-complete-cache)
-   (if rank-function
-       #'dictree-complete-ranked-cache-threshold
-     #'dictree-complete-cache-threshold)
+   dict prefix nil
+   (if rank-function #'dictree-complete-ranked-cache #'dictree-complete-cache)
+   nil  ; cache short PREFIXes
    #'trie-complete #'dictree-complete-stack
    (when rank-function
      (if (functionp rank-function)
@@ -2364,10 +2507,9 @@ completion, and its associated data."
    &optional rank-function maxnum reverse no-cache filter resultfun)
   "Return an alist containing all matches for REGEXP in TRIE
 along with their associated data, in the order defined by
-RANKFUN, defauling to \"lexical\" order (i.e. the order defined
-by the trie's comparison function).  If REVERSE is non-nil, the
-completions are sorted in the reverse order. Returns nil if no
-completions are found.
+RANKFUN, defauling to \"lexicographic\" order. If REVERSE is
+non-nil, the completions are sorted in the reverse order. Returns
+nil if no completions are found.
 
 DICT can also be a list of dictionaries, in which case matches
 are sought in all dictionaries in the list. (Note that if the
@@ -2408,7 +2550,7 @@ dictionary's rank-function (see `dictree-create'). Any non-nil
 value that *is* a function over-rides this. In that case,
 RANK-FUNCTION should accept two arguments, both cons cells. The
 car of each contains a sequence from the dictionary (of the same
-type as PREFIX), the cdr contains its associated data. The
+type as REGEXP), the cdr contains its associated data. The
 RANK-FUNCTION should return non-nil if first argument is ranked
 strictly higher than the second, nil otherwise.
 
@@ -2432,18 +2574,165 @@ value is what gets added to the final result list, instead of the
 default key-data cons cell."
   ;; run regexp query
   (dictree--query
-   dict regexp
-   (if rank-function
-       #'dictree-regexp-ranked-cache
-     #'dictree-regexp-cache)
-   (if rank-function
-       #'dictree-regexp-ranked-cache-threshold
-     #'dictree-regexp-cache-threshold)
+   dict regexp nil
+   (if rank-function #'dictree-regexp-ranked-cache #'dictree-regexp-cache)
+   (if (and (eq (elt regexp (- (length regexp) 2)) ?.)
+	    (eq (elt regexp (- (length regexp) 1)) ?*))
+       nil  ; cache short REGEXP if it ends in .*
+     t)     ; cache long REGEXPs otherwise
    #'trie-regexp-search #'dictree-regexp-stack
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
        (dictree-rank-function (if (listp dict) (car dict) dict))))
+   maxnum reverse no-cache filter resultfun))
+
+
+
+
+;; ----------------------------------------------------------------
+;;                      Fuzzy queries
+
+(defun dictree-fuzzy-match
+  (dict string distance
+   &optional rank-function maxnum reverse no-cache filter resultfun)
+  "Return matches for STRING in DICT within Lewenstein DISTANCE
+\(edit distance\) of STRING along with their associated data, in
+the order defined by RANKFUN, defauling to \"lexicographic\"
+order. If REVERSE is non-nil, the matches are sorted in the
+reverse order. Returns nil if no completions are found.
+
+DICT can also be a list of dictionaries, in which case matches
+are sought in all dictionaries in the list. (Note that if the
+same key appears in multiple dictionaries, the alist may contain
+the same key multiple times, each copy associated with the data
+from a different dictionary. If you want to combine identical
+keys, use a meta-dictionary; see `dictree-create-meta-dict'.)
+
+STRING is a sequence (vector, list or string), whose elements are
+of the same type as elements of the trie keys. If STRING is a
+string, it must be possible to apply `string' to individual
+elements of the keys stored in the trie. The KEYs returned in the
+list will be sequences of the same type as STRING.
+
+DISTANCE must be an integer, and specifies the maximum Lewenstein
+distance \(edit distances\) of matches from STRING.
+
+If optional argument RANK-FUNCTION is 'distance, the matches are
+sorted according to their Lewenstein distance from STRING. If it
+is any other non-nil value that is not a function, the matches
+are sorted according to the dictionary's rank-function (see
+`dictree-create'). Any non-nil value that *is* a function
+over-rides this. In that case, RANK-FUNCTION should accept two
+arguments, both cons cells. The car of each contains a sequence
+from the dictionary (of the same type as STRING), the cdr
+contains its associated data. The RANK-FUNCTION should return
+non-nil if first argument is ranked strictly higher than the
+second, nil otherwise.
+
+The optional integer argument MAXNUM limits the results to the
+first MAXNUM matches. The default is to return all matches.
+
+If the optional argument NO-CACHE is non-nil, it prevents caching
+of the result. Ignored for dictionaries that do not have
+fuzzy-match caching enabled.
+
+The FILTER argument sets a filter function for the matches. If
+supplied, it is called for each possible match with two
+arguments: the matching key, and its associated data. If the
+filter function returns nil, the match is not included in the
+results, and does not count towards MAXNUM.
+
+RESULTFUN defines a function used to process results before
+adding them to the final result list. If specified, it should
+accept two arguments: a key and its associated data. It's return
+value is what gets added to the final result list, instead of the
+default key-data cons cell."
+  ;; run fuzzy-match query
+  (dictree--query
+   dict string (list distance)
+   (if rank-function
+       #'dictree-fuzzy-match-ranked-cache
+     #'dictree-fuzzy-match-cache)
+   t  ; cache long STRINGs
+   #'trie-fuzzy-match #'dictree-fuzzy-match-stack
+   (when rank-function
+     (cond
+      ((functionp rank-function) rank-function)
+      ((eq rank-function 'distance) t)
+      (t (dictree-rank-function (if (listp dict) (car dict) dict)))))
+   maxnum reverse no-cache filter resultfun))
+
+
+
+(defun dictree-fuzzy-complete
+  (dict prefix distance
+   &optional rank-function maxnum reverse no-cache filter resultfun)
+  "Return completion of prefixes in DICT within Lewenstein DISTANCE
+\(edit distance\) of PREFIX along with their associated data, in
+the order defined by RANKFUN, defauling to \"lexicographic\"
+order. If REVERSE is non-nil, the matches are sorted in the
+reverse order. Returns nil if no completions are found.
+
+DICT can also be a list of dictionaries, in which case matches
+are sought in all dictionaries in the list. (Note that if the
+same key appears in multiple dictionaries, the alist may contain
+the same key multiple times, each copy associated with the data
+from a different dictionary. If you want to combine identical
+keys, use a meta-dictionary; see `dictree-create-meta-dict'.)
+
+PREFIX is a sequence (vector, list or string), whose elements are
+of the same type as elements of the trie keys. If STRING is a
+string, it must be possible to apply `string' to individual
+elements of the keys stored in the trie. The KEYs returned in the
+list will be sequences of the same type as STRING.
+
+DISTANCE must be an integer, and specifies the maximum Lewenstein
+distance \(edit distances\) of prefixes from PREFIX.
+
+If optional argument RANK-FUNCTION is 'distance, the matches are
+sorted according to their Lewenstein distance from STRING. If it
+is any other non-nil value that is not a function, the matches
+are sorted according to the dictionary's rank-function (see
+`dictree-create'). Any non-nil value that *is* a function
+over-rides this. In that case, RANK-FUNCTION should accept two
+arguments, both cons cells. The car of each contains a sequence
+from the dictionary (of the same type as STRING), the cdr
+contains its associated data. The RANK-FUNCTION should return
+non-nil if first argument is ranked strictly higher than the
+second, nil otherwise.
+
+The optional integer argument MAXNUM limits the results to the
+first MAXNUM matches. The default is to return all matches.
+
+If the optional argument NO-CACHE is non-nil, it prevents caching
+of the result. Ignored for dictionaries that do not have
+fuzzy-match caching enabled.
+
+The FILTER argument sets a filter function for the matches. If
+supplied, it is called for each possible match with two
+arguments: the matching key, and its associated data. If the
+filter function returns nil, the match is not included in the
+results, and does not count towards MAXNUM.
+
+RESULTFUN defines a function used to process results before
+adding them to the final result list. If specified, it should
+accept two arguments: a key and its associated data. It's return
+value is what gets added to the final result list, instead of the
+default key-data cons cell."
+  ;; run fuzzy-complete query
+  (dictree--query
+   dict prefix (list distance)
+   (if rank-function
+       #'dictree-fuzzy-complete-ranked-cache
+     #'dictree-fuzzy-complete-cache)
+   nil  ; cache short PREFIXes
+   #'trie-fuzzy-complete #'dictree-fuzzy-complete-stack
+   (when rank-function
+     (cond
+      ((functionp rank-function) rank-function)
+      ((eq rank-function 'distance) t)
+      (t (dictree-rank-function (if (listp dict) (car dict) dict)))))
    maxnum reverse no-cache filter resultfun))
 
 
@@ -2762,7 +3051,9 @@ is the prefix argument."
   ;; the name DICTNAME and file FILENAME.
   (let (hashcode tmpdict tmptrie lookup-alist
 	complete-alist complete-ranked-alist
-	regexp-alist regexp-ranked-alist)
+	regexp-alist regexp-ranked-alist
+	fuzzy-match-alist fuzzy-match-ranked-alist
+	fuzzy-complete-alist fuzzy-complete-ranked-alist)
 
     ;; --- convert trie data ---
     ;; if dictionary doesn't use any custom save functions, write
@@ -2820,85 +3111,87 @@ is the prefix argument."
     ;; hash tables have no read syntax in older Emacsen, so we convert
     ;; them to alists for writing
     (unless (featurep 'hashtable-print-readable)
-      ;; convert lookup cache hash table to alist, if it exists
-      (when (dictree--lookup-cache-threshold dict)
-	(maphash
-	 (lambda (key val)
-	   (push
-	    (cons key
-		  (cons (mapcar #'car (dictree--cache-results val))
-			(dictree--cache-maxnum val)))
-	    lookup-alist))
-	 (dictree--lookup-cache dict))
-	;; generate code to reconstruct the lookup hash table
-	(setq hashcode
-	      (concat
-	       hashcode
-	       "(let ((lookup-cache (make-hash-table :test #'equal))\n"
-	       "      (trie (dictree--trie " dictname ")))\n"
-	       "  (mapc\n"
-	       "   (lambda (entry)\n"
-	       "     (puthash\n"
-	       "      (car entry)\n"
-	       "      (dictree--cache-create\n"
-	       "       (mapcar\n"
-	       "        (lambda (key)\n"
-	       "          (cons key (trie-member trie key)))\n"
-	       "        (dictree--cache-results (cdr entry)))\n"
-	       "       (dictree--cache-maxnum (cdr entry)))\n"
-	       "      lookup-cache))\n"
-	       "   (dictree--lookup-cache " dictname "))\n"
-	       "  (setf (dictree--lookup-cache " dictname ")\n"
-	       "        lookup-cache))\n")))
+      ;; convert lookup cache hash table to alist
+      (maphash
+       (lambda (key val)
+	 (push
+	  (cons key
+		(cons (mapcar #'car (dictree--cache-results val))
+		      (dictree--cache-maxnum val)))
+	  lookup-alist))
+       (dictree--lookup-cache dict))
+      ;; generate code to reconstruct the lookup hash table
+      (setq hashcode
+	    (concat
+	     hashcode
+	     "(let ((lookup-cache (make-hash-table :test #'equal))\n"
+	     "      (trie (dictree--trie " dictname ")))\n"
+	     "  (mapc\n"
+	     "   (lambda (entry)\n"
+	     "     (puthash\n"
+	     "      (car entry)\n"
+	     "      (dictree--cache-create\n"
+	     "       (mapcar\n"
+	     "        (lambda (key)\n"
+	     "          (cons key (trie-member trie key)))\n"
+	     "        (dictree--cache-results (cdr entry)))\n"
+	     "       (dictree--cache-maxnum (cdr entry)))\n"
+	     "      lookup-cache))\n"
+	     "   (dictree--lookup-cache " dictname "))\n"
+	     "  (setf (dictree--lookup-cache " dictname ")\n"
+	     "        lookup-cache))\n"))
 
-      ;; convert query caches, if they exist
+      ;; convert query caches
       (dolist (cache-details
-	       '((dictree--complete-cache-threshold
-		  complete-alist dictree--complete-cache)
-		 (dictree--complete-ranked-cache-threshold
-		  complete-ranked-alist dictree--complete-ranked-cache)
-		 (dictree--regexp-cache-threshold
-		  regexp-alist dictree--regexp-cache)
-		 (dictree--regexp-ranked-cache-threshold
-		  regexp-ranked-alist dictree--regexp-ranked-cache)))
-	(when (funcall (nth 0 cache-details) dict)
-	  ;; convert hash table to alist
-	  (set (nth 1 cache-details)
-	       (let (alist)
-		 (maphash
-		  (lambda (key val)
-		    (push
-		     (cons key
-			   (cons
-			    (mapcar #'car (dictree--cache-results val))
-			    (dictree--cache-maxnum val)))
-		     alist))
-		  (funcall (nth 2 cache-details) dict))
-		 alist))
-	  ;; generate code to reconstruct hash table from alist
-	  (setq
-	   hashcode
-	   (concat
-	    hashcode
-	    "(let ((cache (make-hash-table :test #'equal))\n"
-	    "      (trie (dictree--trie " dictname ")))\n"
-	    "  (mapc\n"
-	    "   (lambda (entry)\n"
-	    "     (puthash\n"
-	    "      (car entry)\n"
-	    "      (dictree--cache-create\n"
-	    "       (mapcar\n"
-	    "        (lambda (key)\n"
-	    "          (cons key\n"
-	    "                (trie-member\n"
-	    "                 trie (if (stringp key) key (car key)))))\n"
-	    "        (dictree--cache-results (cdr entry)))\n"
-	    "       (dictree--cache-maxnum (cdr entry)))\n"
-	    "      cache))\n"
-	    "   (" (symbol-name (nth 2 cache-details)) " " dictname "))\n"
-	    "  (setf (" (symbol-name (nth 2 cache-details)) " "
-	              dictname ")\n"
-	    "        cache))\n")))))
+	       '((complete-alist dictree--complete-cache)
+		 (complete-ranked-alist dictree--complete-ranked-cache)
+		 (regexp-alist dictree--regexp-cache)
+		 (regexp-ranked-alist dictree--regexp-ranked-cache)
+		 (fuzzy-match-alist
+		  dictree--meta-dict-fuzzy-match-cache)
+		 (fuzzy-match-ranked-alist
+		  dictree--meta-dict-fuzzy-match-ranked-cache)
+		 (fuzzy-complete-alist
+		  dictree--meta-dict-fuzzy-complete-cache)
+		 (fuzzy-complete-ranked-alist
+		  dictree--meta-dict-fuzzy-complete-ranked-cache)))
+	;; convert hash table to alist
+	(set (nth 0 cache-details)
+	     (let (alist)
+	       (maphash
+		(lambda (key val)
+		  (push
+		   (cons key
+			 (cons
+			  (mapcar #'car (dictree--cache-results val))
+			  (dictree--cache-maxnum val)))
+		   alist))
+		(funcall (nth 1 cache-details) dict))
+	       alist))
+	;; generate code to reconstruct hash table from alist
+	(setq
+	 hashcode
+	 (concat
+	  hashcode
+	  "(let ((cache (make-hash-table :test #'equal))\n"
+	  "      (trie (dictree--trie " dictname ")))\n"
+	  "  (mapc\n"
+	  "   (lambda (entry)\n"
+	  "     (puthash\n"
+	  "      (car entry)\n"
+	  "      (dictree--cache-create\n"
+	  "       (mapcar\n"
+	  "        (lambda (key)\n"
+	  "          (cons key\n"
+	  "                (trie-member\n"
+	  "                 trie (if (stringp key) key (car key)))))\n"
+	  "        (dictree--cache-results (cdr entry)))\n"
+	  "       (dictree--cache-maxnum (cdr entry)))\n"
+	  "      cache))\n"
+	  "   (" (symbol-name (nth 1 cache-details)) " " dictname "))\n"
+	  "  (setf (" (symbol-name (nth 1 cache-details)) " "
+	  dictname ")\n"
+	  "        cache))\n"))))
 
 
     ;; --- write to file ---
@@ -2910,11 +3203,24 @@ is the prefix argument."
 	  (dictree--modified tmpdict) nil
 	  (dictree--meta-dict-list tmpdict) nil)
     (unless (featurep 'hashtable-print-readable)
-      (setf (dictree--lookup-cache tmpdict) lookup-alist
-	    (dictree--complete-cache tmpdict) complete-alist
-	    (dictree--complete-ranked-cache tmpdict) complete-ranked-alist
-	    (dictree--regexp-cache tmpdict) regexp-alist
-	    (dictree--regexp-ranked-cache tmpdict) regexp-ranked-alist))
+      (setf (dictree--lookup-cache tmpdict)
+	      lookup-alist
+	    (dictree--complete-cache tmpdict)
+	      complete-alist
+	    (dictree--complete-ranked-cache tmpdict)
+	      complete-ranked-alist
+	    (dictree--regexp-cache tmpdict)
+	      regexp-alist
+	    (dictree--regexp-ranked-cache tmpdict)
+	      regexp-ranked-alist
+	    (dictree--fuzzy-match-cache tmpdict)
+	      fuzzy-match-alist
+	    (dictree--fuzzy-match-ranked-cache tmpdict)
+	      fuzzy-match-ranked-alist
+	    (dictree--fuzzy-complete-cache tmpdict)
+	      fuzzy-complete-alist
+	    (dictree--fuzzy-complete-ranked-cache tmpdict)
+	      fuzzy-complete-ranked-alist))
 
     ;; write lisp code that generates the dictionary object
     (let ((print-circle t) (print-level nil) (print-length nil))
@@ -2946,42 +3252,47 @@ is the prefix argument."
   ;; the name DICTNAME and file FILENAME.
   (let (hashcode tmpdict lookup-alist
 	complete-alist complete-ranked-alist
-	regexp-alist regexp-ranked-alist)
+	regexp-alist regexp-ranked-alist
+	fuzzy-match-alist fuzzy-match-ranked-alist
+	fuzzy-complete-alist fuzzy-complete-ranked-alist)
 
     ;; --- convert caches for writing to file ---
     ;; hash tables have no read syntax in older Emacsen, so we convert
     ;; them to alists for writing
     (unless (featurep 'hashtable-print-readable)
-      ;; convert lookup cache hash table to an alist, if it exists
-      (when (dictree--meta-dict-lookup-cache-threshold dict)
-	(maphash (lambda (key val)
-		   (push (cons key (mapcar #'car val)) lookup-alist))
-		 (dictree--meta-dict-lookup-cache dict))
-	;; generate code to reconstruct the lookup hash table
-	(setq hashcode
-	      (concat
-	       hashcode
-	       "(let ((cache (make-hash-table :test #'equal)))\n"
-	       "  (mapc (lambda (entry)\n"
-	       "    (puthash (car entry) (cdr entry) cache))\n"
-	       "    (dictree--meta-dict-lookup-cache " dictname "))\n"
-	       "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
-	       "        cache))\n")))
+      ;; convert lookup cache hash table to an alist
+      (maphash (lambda (key val)
+		 (push (cons key (mapcar #'car val)) lookup-alist))
+	       (dictree--meta-dict-lookup-cache dict))
+      ;; generate code to reconstruct the lookup hash table
+      (setq hashcode
+	    (concat
+	     hashcode
+	     "(let ((cache (make-hash-table :test #'equal)))\n"
+	     "  (mapc (lambda (entry)\n"
+	     "    (puthash (car entry) (cdr entry) cache))\n"
+	     "    (dictree--meta-dict-lookup-cache " dictname "))\n"
+	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
+	     "        cache))\n")))
 
-      ;; convert query caches, if they exist
-      (dolist (cache-details
-	       '((dictree--meta-dict-complete-cache-threshold
-		  complete-alist
-		  dictree--meta-dict-complete-cache)
-		 (dictree--meta-dict-complete-ranked-cache-threshold
-		  complete-ranked-alist
-		  dictree--meta-dict-complete-ranked-cache)
-		 (dictree--meta-dict-regexp-cache-threshold
-		  regexp-alist
-		  dictree--meta-dict-regexp-cache)
-		 (dictree--meta-dict-regexp-ranked-cache-threshold
-		  regexp-ranked-alist
-		  dictree--meta-dict-regexp-ranked-cache)))
+    ;; convert query caches, if they exist
+    (dolist (cache-details
+	     '((complete-alist
+		dictree--meta-dict-complete-cache)
+	       (complete-ranked-alist
+		dictree--meta-dict-complete-ranked-cache)
+	       (regexp-alist
+		dictree--meta-dict-regexp-cache)
+	       (regexp-ranked-alist
+		dictree--meta-dict-regexp-ranked-cache)
+	       (fuzzy-match-alist
+		dictree--meta-dict-fuzzy-match-cache)
+	       (fuzzy-match-ranked-alist
+		dictree--meta-dict-fuzzy-match-ranked-cache)
+	       (fuzzy-complete-alist
+		dictree--meta-dict-fuzzy-complete-cache)
+	       (fuzzy-complete-ranked-alist
+		dictree--meta-dict-fuzzy-complete-ranked-cache)))
 	(when (funcall (nth 0 cache-details) dict)
 	  ;; convert hash table to alist
 	  (set (nth 1 cache-details)
@@ -3002,7 +3313,7 @@ is the prefix argument."
 	            dictname "))\n"
 	    "  (setf (" (symbol-name (nth 2 cache-details)) " "
 	                dictname ")\n"
-	    "        cache))\n")))))
+	    "        cache))\n"))))
 
 
     ;; --- write to file ---
@@ -3016,13 +3327,24 @@ is the prefix argument."
 	    (mapcar (lambda (dic) (intern (dictree-name dic)))
 		    (dictree--meta-dict-dictlist dict)))
     (unless (featurep 'hashtable-print-readable)
-      (setf (dictree--meta-dict-lookup-cache tmpdict) lookup-alist
-	    (dictree--meta-dict-complete-cache tmpdict) complete-alist
+      (setf (dictree--meta-dict-lookup-cache tmpdict)
+	      lookup-alist
+	    (dictree--meta-dict-complete-cache tmpdict)
+	      complete-alist
 	    (dictree--meta-dict-complete-ranked-cache tmpdict)
 	      complete-ranked-alist
-	    (dictree--meta-dict-regexp-cache tmpdict) regexp-alist
+	    (dictree--meta-dict-regexp-cache tmpdict)
+	      regexp-alist
 	    (dictree--meta-dict-regexp-ranked-cache tmpdict)
-	      regexp-ranked-alist))
+	      regexp-ranked-alist
+	    (dictree--meta-dict-fuzzy-match-cache tmpdict)
+	      fuzzy-match-alist
+	    (dictree--meta-dict-fuzzy-match-ranked-cache tmpdict)
+	      fuzzy-match-ranked-alist
+	    (dictree--meta-dict-fuzzy-complete-cache tmpdict)
+	      fuzzy-complete-alist
+	    (dictree--meta-dict-fuzzy-complete-ranked-cache tmpdict)
+	      fuzzy-complete-ranked-alist))
 
     ;; write lisp code that generates the dictionary object
     (let ((print-circle t) (print-level nil) (print-length nil))
