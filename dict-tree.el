@@ -282,16 +282,15 @@ If START or END is negative, it counts from the end."
 		  (trie (make-trie comparison-function trie-type))
 		  (insfun (dictree--wrap-insfun insert-function))
 		  (rankfun (dictree--wrap-rankfun rank-function))
-		  (lookup-cache (make-hash-table :test #'equal))
-		  (complete-cache (make-hash-table :test #'equal))
-		  (complete-ranked-cache (make-hash-table :test #'equal))
-		  (regexp-cache (make-hash-table :test #'equal))
-		  (regexp-ranked-cache (make-hash-table :test #'equal))
-		  (fuzzy-match-cache (make-hash-table :test #'equal))
-		  (fuzzy-match-ranked-cache (make-hash-table :test #'equal))
-		  (fuzzy-complete-cache (make-hash-table :test #'equal))
-		  (fuzzy-complete-ranked-cache
-		   (make-hash-table :test #'equal))
+		  (lookup-cache nil)
+		  (complete-cache nil)
+		  (complete-ranked-cache nil)
+		  (regexp-cache nil)
+		  (regexp-ranked-cache nil)
+		  (fuzzy-match-cache nil)
+		  (fuzzy-match-ranked-cache nil)
+		  (fuzzy-complete-cache nil)
+		  (fuzzy-complete-ranked-cache nil)
 		  (meta-dict-list nil)
 		  ))
    (:constructor dictree--create-custom
@@ -333,16 +332,15 @@ If START or END is negative, it counts from the end."
 			 :transform-from-read transform-from-read))
 		  (insfun (dictree--wrap-insfun insert-function))
 		  (rankfun (dictree--wrap-rankfun rank-function))
-		  (lookup-cache (make-hash-table :test #'equal))
-		  (complete-cache (make-hash-table :test #'equal))
-		  (complete-ranked-cache (make-hash-table :test #'equal))
-		  (regexp-cache (make-hash-table :test #'equal))
-		  (regexp-ranked-cache (make-hash-table :test #'equal))
-		  (fuzzy-match-cache (make-hash-table :test #'equal))
-		  (fuzzy-match-ranked-cache (make-hash-table :test #'equal))
-		  (fuzzy-complete-cache (make-hash-table :test #'equal))
-		  (fuzzy-complete-ranked-cache
-		   (make-hash-table :test #'equal))
+		  (lookup-cache nil)
+		  (complete-cache nil)
+		  (complete-ranked-cache nil)
+		  (regexp-cache nil)
+		  (regexp-ranked-cache nil)
+		  (fuzzy-match-cache nil)
+		  (fuzzy-match-ranked-cache nil)
+		  (fuzzy-complete-cache nil)
+		  (fuzzy-complete-ranked-cache nil)
 		  (meta-dict-list nil)
 		  ))
    (:copier dictree--copy))
@@ -385,16 +383,15 @@ If START or END is negative, it counts from the end."
 		       (t (error "Invalid object in DICTIONARY-LIST"))))
 		    dictionary-list))
 		  (combfun (dictree--wrap-combfun combine-function))
-		  (lookup-cache (make-hash-table :test #'equal))
-		  (complete-cache (make-hash-table :test #'equal))
-		  (complete-ranked-cache (make-hash-table :test #'equal))
-		  (regexp-cache (make-hash-table :test #'equal))
-		  (regexp-ranked-cache (make-hash-table :test #'equal))
-		  (fuzzy-match-cache (make-hash-table :test #'equal))
-		  (fuzzy-match-ranked-cache (make-hash-table :test #'equal))
-		  (fuzzy-complete-cache (make-hash-table :test #'equal))
-		  (fuzzy-complete-ranked-cache
-		   (make-hash-table :test #'equal))
+		  (lookup-cache nil)
+		  (complete-cache nil)
+		  (complete-ranked-cache nil)
+		  (regexp-cache nil)
+		  (regexp-ranked-cache nil)
+		  (fuzzy-match-cache nil)
+		  (fuzzy-match-ranked-cache nil)
+		  (fuzzy-complete-cache nil)
+		  (fuzzy-complete-ranked-cache nil)
 		  ))
    (:copier dictree--meta-dict-copy))
   name filename autosave modified
@@ -881,11 +878,27 @@ for meta-dictionary DICT.")
       (dictree--meta-dict-lookup-cache dict)
     (dictree--lookup-cache dict)))
 
+(defsetf dictree-lookup-cache (dict) (param)
+  ;; setf method for lookup cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-lookup-cache ,dict)
+	     ,param)
+     (setf (dictree--lookup-cache ,dict)
+	   ,param)))
+
 (defun dictree-complete-cache (dict)
   ;; Return the completion cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-complete-cache dict)
     (dictree--complete-cache dict)))
+
+(defsetf dictree-complete-cache (dict) (param)
+  ;; setf method for complete cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-complete-cache ,dict)
+	     ,param)
+     (setf (dictree--complete-cache ,dict)
+	   ,param)))
 
 (defun dictree-complete-ranked-cache (dict)
   ;; Return the ranked completion cache for dictionary DICT.
@@ -893,11 +906,27 @@ for meta-dictionary DICT.")
       (dictree--meta-dict-complete-ranked-cache dict)
     (dictree--complete-ranked-cache dict)))
 
+(defsetf dictree-complete-ranked-cache (dict) (param)
+  ;; setf method for ranked complete cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-complete-ranked-cache ,dict)
+	     ,param)
+     (setf (dictree--complete-ranked-cache ,dict)
+	   ,param)))
+
 (defun dictree-regexp-cache (dict)
   ;; Return the regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-regexp-cache dict)
     (dictree--regexp-cache dict)))
+
+(defsetf dictree-regexp-cache (dict) (param)
+  ;; setf method for regexp cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-regexp-cache ,dict)
+	     ,param)
+     (setf (dictree--regexp-cache ,dict)
+	   ,param)))
 
 (defun dictree-regexp-ranked-cache (dict)
   ;; Return the ranked regexp cache for dictionary DICT.
@@ -905,11 +934,27 @@ for meta-dictionary DICT.")
       (dictree--meta-dict-regexp-ranked-cache dict)
     (dictree--regexp-ranked-cache dict)))
 
+(defsetf dictree-regexp-ranked-cache (dict) (param)
+  ;; setf method for ranked regexp cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-regexp-ranked-cache ,dict)
+	     ,param)
+     (setf (dictree--regexp-ranked-cache ,dict)
+	   ,param)))
+
 (defun dictree-fuzzy-match-cache (dict)
   ;; Return the regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-fuzzy-match-cache dict)
     (dictree--fuzzy-match-cache dict)))
+
+(defsetf dictree-fuzzy-match-cache (dict) (param)
+  ;; setf method for fuzzy-match cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-fuzzy-match-cache ,dict)
+	     ,param)
+     (setf (dictree--fuzzy-match-cache ,dict)
+	   ,param)))
 
 (defun dictree-fuzzy-match-ranked-cache (dict)
   ;; Return the ranked regexp cache for dictionary DICT.
@@ -917,17 +962,42 @@ for meta-dictionary DICT.")
       (dictree--meta-dict-fuzzy-match-ranked-cache dict)
     (dictree--fuzzy-match-ranked-cache dict)))
 
+(defsetf dictree-fuzzy-match-ranked-cache (dict) (param)
+  ;; setf method for fuzzy-match-ranked cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-fuzzy-match-ranked-cache ,dict)
+	     ,param)
+     (setf (dictree--fuzzy-match-ranked-cache ,dict)
+	   ,param)))
+
 (defun dictree-fuzzy-complete-cache (dict)
   ;; Return the regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-fuzzy-complete-cache dict)
     (dictree--fuzzy-complete-cache dict)))
 
+(defsetf dictree-fuzzy-complete-cache (dict) (param)
+  ;; setf method for fuzzy-complete cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-fuzzy-complete-cache ,dict)
+	     ,param)
+     (setf (dictree--fuzzy-complete-cache ,dict)
+	   ,param)))
+
 (defun dictree-fuzzy-complete-ranked-cache (dict)
   ;; Return the ranked regexp cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-fuzzy-complete-ranked-cache dict)
     (dictree--fuzzy-complete-ranked-cache dict)))
+
+
+(defsetf dictree-fuzzy-complete-ranked-cache (dict) (param)
+  ;; setf method for fuzzy-complete-ranked cache
+  `(if (dictree--meta-dict-p ,dict)
+       (setf (dictree--meta-dict-fuzzy-complete-ranked-cache ,dict)
+	     ,param)
+     (setf (dictree--fuzzy-complete-ranked-cache ,dict)
+	   ,param)))
 
 
 
@@ -1089,7 +1159,8 @@ PREFIX is a prefix of STR."
 	(cond
 	 ;; updating dirty cache entries
 	 ((eq (dictree-cache-update-policy dict) 'synchronize)
-	  (when (gethash key (dictree--lookup-cache dict))
+	  (when (and (dictree--lookup-cache dict)
+		     (gethash key (dictree--lookup-cache dict)))
 	    (if deleted
 		(remhash key (dictree--lookup-cache dict))
 	      (puthash key newdata (dictree--lookup-cache dict)))))
@@ -1131,23 +1202,23 @@ PREFIX is a prefix of STR."
 		  (lambda (prefix dist key)
 		    (<= (Lewenstein-distance prefix key) dist)))
 		 ))
-
-	(maphash
-	 (lambda (cache-key cache-entry)
-	   (setq arg (nth 0 cache-key)
-		 auxargs (nth 1 cache-key))
-	   (when (apply (nth 2 cachefuns)
-			(append (list arg) auxargs (list key)))
-	     (setq reverse (nth 2 cache-key))
-	     (cond
-	      ;; updating dirty cache entries
-	      ((eq (dictree-cache-update-policy dict) 'synchronize)
-	       (funcall (nth 1 cachefuns) dict cache-entry
-			arg auxargs reverse key newdata deleted))
-	      ;; deleting dirty cache entries
-	      (t (remhash (list arg auxargs reverse)
-			  (funcall (nth 0 cachefuns) dict))))))
-	 (funcall (nth 0 cachefuns) dict)))
+	(when (funcall (nth 0 cachefuns) dict)
+	  (maphash
+	   (lambda (cache-key cache-entry)
+	     (setq arg (nth 0 cache-key)
+		   auxargs (nth 1 cache-key))
+	     (when (apply (nth 2 cachefuns)
+			  (append (list arg) auxargs (list key)))
+	       (setq reverse (nth 2 cache-key))
+	       (cond
+		;; updating dirty cache entries
+		((eq (dictree-cache-update-policy dict) 'synchronize)
+		 (funcall (nth 1 cachefuns) dict cache-entry
+			  arg auxargs reverse key newdata deleted))
+		;; deleting dirty cache entries
+		(t (remhash (list arg auxargs reverse)
+			    (funcall (nth 0 cachefuns) dict))))))
+	   (funcall (nth 0 cachefuns) dict))))
       )))
 
 
@@ -1594,6 +1665,9 @@ also `dictree-member-p' for testing existence alone.)"
 		  time (length key) (dictree-cache-policy dict)
 		  (dictree-cache-threshold dict) 'long-keys))
 	(setf (dictree-modified dict) t)
+	;; create lookup cache if it doesn't already exist
+	(unless (dictree-lookup-cache dict)
+	  (setf (dictree-lookup-cache dict) (make-hash-table :test #'equal)))
 	(puthash key data (dictree-lookup-cache dict))))
 
     ;; return the desired data
@@ -2269,7 +2343,7 @@ Returns nil if the stack is empty."
 ;;             Functions for building advanced queries
 
 (defun dictree--query
-  (dict arg auxargs cachefun cache-long triefun stackfun
+  (dict arg auxargs cachefun cachecreatefun cache-long triefun stackfun
    &optional rank-function maxnum reverse no-cache filter resultfun)
   ;; Return results of querying DICT with argument ARG (and AUXARGS list, if
   ;; any) using TRIEFUN or STACKFUN. If DICT's cache-threshold is non-nil,
@@ -2287,11 +2361,10 @@ Returns nil if the stack is empty."
   ;; wrap DICT in a list if necessary
   (when (dictree-p dict) (setq dict (list dict)))
 
-  (let (cache cacheparam results res cache-entry)
+  (let (cache results res cache-entry)
     ;; map over all dictionaries in list
     (dolist (dic dict)
-      (setq cache (funcall cachefun dic)
-	    cacheparam (dictree--cache-threshold dic))
+      (setq cache (funcall cachefun dic))
       (cond
        ;; If FILTER or custom RANK-FUNCTION was specified, look in trie since
        ;; we don't cache custom searches. We pass a slightly redefined filter
@@ -2308,7 +2381,7 @@ Returns nil if the stack is empty."
 
        ;; if there's a cache entry with enough results, use it
        ((and (setq cache-entry
-		   (if cacheparam
+		   (if cache
 		       (gethash (list arg auxargs reverse) cache)
 		     nil))
 	     (or (null (dictree--cache-maxnum cache-entry))
@@ -2336,12 +2409,14 @@ Returns nil if the stack is empty."
 	  (when (and (not no-cache)
 		     (dictree--above-cache-threshold-p
 		      time (length arg) (dictree-cache-policy dic)
-		      cacheparam cache-long))
+		      (dictree-cache-threshold dic) cache-long))
 	    (setf (dictree-modified dic) t)
+	    ;; create query cache if it doesn't already exist
+	    (unless (funcall cachefun dic) (funcall cachecreatefun dic))
 	    (puthash (list arg auxargs reverse)
 		     (dictree--cache-create res maxnum)
-		     cache)))))
-
+		     (funcall cachefun dic))))))
+      
       ;; merge new result into results list
       (setq results
 	    (dictree--merge
@@ -2470,7 +2545,16 @@ default key-data cons cell."
   ;; run completion query
   (dictree--query
    dict prefix nil
-   (if rank-function #'dictree-complete-ranked-cache #'dictree-complete-cache)
+   (if rank-function
+       #'dictree-complete-ranked-cache
+     #'dictree-complete-cache)
+   (if rank-function
+       (lambda (dict)
+	 (setf (dictree-complete-ranked-cache dict)
+	        (make-hash-table :test #'equal)))
+     (lambda (dict)
+       (setf (dictree-complete-cache dict)
+	     (make-hash-table :test #'equal))))
    nil  ; cache short PREFIXes
    #'trie-complete #'dictree-complete-stack
    (when rank-function
@@ -2575,7 +2659,16 @@ default key-data cons cell."
   ;; run regexp query
   (dictree--query
    dict regexp nil
-   (if rank-function #'dictree-regexp-ranked-cache #'dictree-regexp-cache)
+   (if rank-function
+       #'dictree-regexp-ranked-cache
+     #'dictree-regexp-cache)
+   (if rank-function
+       (lambda (dict)
+	 (setf (dictree-regexp-ranked-cache dict)
+	        (make-hash-table :test #'equal)))
+     (lambda (dict)
+       (setf (dictree-regexp-cache dict)
+	     (make-hash-table :test #'equal))))
    (if (and (eq (elt regexp (- (length regexp) 2)) ?.)
 	    (eq (elt regexp (- (length regexp) 1)) ?*))
        nil  ; cache short REGEXP if it ends in .*
@@ -2654,6 +2747,13 @@ default key-data cons cell."
    (if rank-function
        #'dictree-fuzzy-match-ranked-cache
      #'dictree-fuzzy-match-cache)
+   (if rank-function
+       (lambda (dict)
+	 (setf (dictree-fuzzy-match-ranked-cache dict)
+	        (make-hash-table :test #'equal)))
+     (lambda (dict)
+       (setf (dictree-fuzzy-match-cache dict)
+	     (make-hash-table :test #'equal))))
    t  ; cache long STRINGs
    #'trie-fuzzy-match #'dictree-fuzzy-match-stack
    (when rank-function
@@ -2726,6 +2826,13 @@ default key-data cons cell."
    (if rank-function
        #'dictree-fuzzy-complete-ranked-cache
      #'dictree-fuzzy-complete-cache)
+   (if rank-function
+       (lambda (dict)
+	 (setf (dictree-fuzzy-complete-ranked-cache dict)
+	        (make-hash-table :test #'equal)))
+     (lambda (dict)
+       (setf (dictree-fuzzy-complete-cache dict)
+	     (make-hash-table :test #'equal))))
    nil  ; cache short PREFIXes
    #'trie-fuzzy-complete #'dictree-fuzzy-complete-stack
    (when rank-function
@@ -3111,87 +3218,93 @@ is the prefix argument."
     ;; hash tables have no read syntax in older Emacsen, so we convert
     ;; them to alists for writing
     (unless (featurep 'hashtable-print-readable)
-      ;; convert lookup cache hash table to alist
-      (maphash
-       (lambda (key val)
-	 (push
-	  (cons key
-		(cons (mapcar #'car (dictree--cache-results val))
-		      (dictree--cache-maxnum val)))
-	  lookup-alist))
-       (dictree--lookup-cache dict))
-      ;; generate code to reconstruct the lookup hash table
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(let ((lookup-cache (make-hash-table :test #'equal))\n"
-	     "      (trie (dictree--trie " dictname ")))\n"
-	     "  (mapc\n"
-	     "   (lambda (entry)\n"
-	     "     (puthash\n"
-	     "      (car entry)\n"
-	     "      (dictree--cache-create\n"
-	     "       (mapcar\n"
-	     "        (lambda (key)\n"
-	     "          (cons key (trie-member trie key)))\n"
-	     "        (dictree--cache-results (cdr entry)))\n"
-	     "       (dictree--cache-maxnum (cdr entry)))\n"
-	     "      lookup-cache))\n"
-	     "   (dictree--lookup-cache " dictname "))\n"
-	     "  (setf (dictree--lookup-cache " dictname ")\n"
-	     "        lookup-cache))\n"))
+      ;; convert lookup cache hash table to alist, if it exists
+      (when (dictree--lookup-cache dict)
+	(maphash
+	 (lambda (key val)
+	   (push
+	    (cons key
+		  (cons (mapcar #'car (dictree--cache-results val))
+			(dictree--cache-maxnum val)))
+	    lookup-alist))
+	 (dictree--lookup-cache dict))
+	;; generate code to reconstruct the lookup hash table
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((lookup-cache (make-hash-table :test #'equal))\n"
+	       "      (trie (dictree--trie " dictname ")))\n"
+	       "  (mapc\n"
+	       "   (lambda (entry)\n"
+	       "     (puthash\n"
+	       "      (car entry)\n"
+	       "      (dictree--cache-create\n"
+	       "       (mapcar\n"
+	       "        (lambda (key)\n"
+	       "          (cons key (trie-member trie key)))\n"
+	       "        (dictree--cache-results (cdr entry)))\n"
+	       "       (dictree--cache-maxnum (cdr entry)))\n"
+	       "      lookup-cache))\n"
+	       "   (dictree--lookup-cache " dictname "))\n"
+	       "  (setf (dictree--lookup-cache " dictname ")\n"
+	       "        lookup-cache))\n")))
 
-      ;; convert query caches
+      ;; convert query caches, if they exist
       (dolist (cache-details
-	       '((complete-alist dictree--complete-cache)
-		 (complete-ranked-alist dictree--complete-ranked-cache)
-		 (regexp-alist dictree--regexp-cache)
-		 (regexp-ranked-alist dictree--regexp-ranked-cache)
-		 (fuzzy-match-alist
-		  dictree--meta-dict-fuzzy-match-cache)
-		 (fuzzy-match-ranked-alist
-		  dictree--meta-dict-fuzzy-match-ranked-cache)
-		 (fuzzy-complete-alist
-		  dictree--meta-dict-fuzzy-complete-cache)
-		 (fuzzy-complete-ranked-alist
-		  dictree--meta-dict-fuzzy-complete-ranked-cache)))
-	;; convert hash table to alist
-	(set (nth 0 cache-details)
-	     (let (alist)
-	       (maphash
-		(lambda (key val)
-		  (push
-		   (cons key
-			 (cons
-			  (mapcar #'car (dictree--cache-results val))
-			  (dictree--cache-maxnum val)))
-		   alist))
-		(funcall (nth 1 cache-details) dict))
-	       alist))
-	;; generate code to reconstruct hash table from alist
-	(setq
-	 hashcode
-	 (concat
-	  hashcode
-	  "(let ((cache (make-hash-table :test #'equal))\n"
-	  "      (trie (dictree--trie " dictname ")))\n"
-	  "  (mapc\n"
-	  "   (lambda (entry)\n"
-	  "     (puthash\n"
-	  "      (car entry)\n"
-	  "      (dictree--cache-create\n"
-	  "       (mapcar\n"
-	  "        (lambda (key)\n"
-	  "          (cons key\n"
-	  "                (trie-member\n"
-	  "                 trie (if (stringp key) key (car key)))))\n"
-	  "        (dictree--cache-results (cdr entry)))\n"
-	  "       (dictree--cache-maxnum (cdr entry)))\n"
-	  "      cache))\n"
-	  "   (" (symbol-name (nth 1 cache-details)) " " dictname "))\n"
-	  "  (setf (" (symbol-name (nth 1 cache-details)) " "
-	  dictname ")\n"
-	  "        cache))\n"))))
+	       '((dictree--complete-cache
+		  complete-alist)
+		 (dictree--complete-ranked-cache
+		  complete-ranked-alist)
+		 (dictree--regexp-cache
+		  regexp-alist)
+		 (dictree--regexp-ranked-cache
+		  regexp-ranked-alist)
+		 (dictree--fuzzy-match-cache
+		  fuzzy-match-alist)
+		 (dictree--fuzzy-match-ranked-cache
+		  fuzzy-match-ranked-alist)
+		 (dictree--fuzzy-complete-cache
+		  fuzzy-complete-alist)
+		 (dictree--fuzzy-complete-ranked-cache
+		  fuzzy-complete-ranked-alist)))
+	(when (funcall (nth 0 cache-details) dict)
+	  ;; convert hash table to alist
+	  (set (nth 1 cache-details)
+	       (let (alist)
+		 (maphash
+		  (lambda (key val)
+		    (push
+		     (cons key
+			   (cons
+			    (mapcar #'car (dictree--cache-results val))
+			    (dictree--cache-maxnum val)))
+		     alist))
+		(funcall (nth 0 cache-details) dict))
+		 alist))
+	  ;; generate code to reconstruct hash table from alist
+	  (setq
+	   hashcode
+	   (concat
+	    hashcode
+	    "(let ((cache (make-hash-table :test #'equal))\n"
+	    "      (trie (dictree--trie " dictname ")))\n"
+	    "  (mapc\n"
+	    "   (lambda (entry)\n"
+	    "     (puthash\n"
+	    "      (car entry)\n"
+	    "      (dictree--cache-create\n"
+	    "       (mapcar\n"
+	    "        (lambda (key)\n"
+	    "          (cons key\n"
+	    "                (trie-member\n"
+	    "                 trie (if (stringp key) key (car key)))))\n"
+	    "        (dictree--cache-results (cdr entry)))\n"
+	    "       (dictree--cache-maxnum (cdr entry)))\n"
+	    "      cache))\n"
+	    "   (" (symbol-name (nth 0 cache-details)) " " dictname "))\n"
+	    "  (setf (" (symbol-name (nth 0 cache-details)) " "
+	    dictname ")\n"
+	    "        cache))\n")))))
 
 
     ;; --- write to file ---
@@ -3260,46 +3373,46 @@ is the prefix argument."
     ;; hash tables have no read syntax in older Emacsen, so we convert
     ;; them to alists for writing
     (unless (featurep 'hashtable-print-readable)
-      ;; convert lookup cache hash table to an alist
-      (maphash (lambda (key val)
-		 (push (cons key (mapcar #'car val)) lookup-alist))
-	       (dictree--meta-dict-lookup-cache dict))
-      ;; generate code to reconstruct the lookup hash table
-      (setq hashcode
-	    (concat
-	     hashcode
-	     "(let ((cache (make-hash-table :test #'equal)))\n"
-	     "  (mapc (lambda (entry)\n"
-	     "    (puthash (car entry) (cdr entry) cache))\n"
-	     "    (dictree--meta-dict-lookup-cache " dictname "))\n"
-	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
-	     "        cache))\n")))
+      ;; convert lookup cache hash table to an alist, if it exists
+      (when (dictree--meta-dict-lookup-cache dict)
+	(maphash (lambda (key val)
+		   (push (cons key (mapcar #'car val)) lookup-alist))
+		 (dictree--meta-dict-lookup-cache dict))
+	;; generate code to reconstruct the lookup hash table
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((cache (make-hash-table :test #'equal)))\n"
+	       "  (mapc (lambda (entry)\n"
+	       "    (puthash (car entry) (cdr entry) cache))\n"
+	       "    (dictree--meta-dict-lookup-cache " dictname "))\n"
+	       "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
+	       "        cache))\n")))
 
-    ;; convert query caches, if they exist
-    (dolist (cache-details
-	     '((complete-alist
-		dictree--meta-dict-complete-cache)
-	       (complete-ranked-alist
-		dictree--meta-dict-complete-ranked-cache)
-	       (regexp-alist
-		dictree--meta-dict-regexp-cache)
-	       (regexp-ranked-alist
-		dictree--meta-dict-regexp-ranked-cache)
-	       (fuzzy-match-alist
-		dictree--meta-dict-fuzzy-match-cache)
-	       (fuzzy-match-ranked-alist
-		dictree--meta-dict-fuzzy-match-ranked-cache)
-	       (fuzzy-complete-alist
-		dictree--meta-dict-fuzzy-complete-cache)
-	       (fuzzy-complete-ranked-alist
-		dictree--meta-dict-fuzzy-complete-ranked-cache)))
+      ;; convert query caches, if they exist
+      (dolist (cache-details
+	       '((dictree--meta-dict-complete-cache
+		  complete-alist)
+		 (dictree--meta-dict-complete-ranked-cache
+		  complete-ranked-alist)
+		 (dictree--meta-dict-regexp-cache
+		  regexp-alist)
+		 (dictree--meta-dict-regexp-ranked-cache
+		  regexp-ranked-alist)
+		 (dictree--meta-dict-fuzzy-match-cache
+		  fuzzy-match-alist)
+		 (dictree--meta-dict-fuzzy-match-ranked-cache
+		  fuzzy-match-ranked-alist)
+		 (dictree--meta-dict-fuzzy-complete-cache
+		  fuzzy-complete-alist)
+		 (dictree--meta-dict-fuzzy-complete-ranked-cache
+		  fuzzy-complete-ranked-alist)))
 	(when (funcall (nth 0 cache-details) dict)
 	  ;; convert hash table to alist
 	  (set (nth 1 cache-details)
 	       (let (alist)
-		 (maphash
-		  (lambda (key val) (push (cons key val) alist))
-		  (funcall (nth 2 cache-details) dict))
+		 (maphash (lambda (key val) (push (cons key val) alist))
+			  (funcall (nth 0 cache-details) dict))
 		 alist))
 	  ;; generate code to reconstruct hash table from alist
 	  (setq
@@ -3309,11 +3422,11 @@ is the prefix argument."
 	    "(let ((cache (make-hash-table :test #'equal)))\n"
 	    "  (mapc (lambda (entry)\n"
 	    "    (puthash (car entry) (cdr entry) cache))\n"
-	    "    (" (symbol-name (nth 2 cache-details)) " "
+	    "    (" (symbol-name (nth 0 cache-details)) " "
 	            dictname "))\n"
-	    "  (setf (" (symbol-name (nth 2 cache-details)) " "
+	    "  (setf (" (symbol-name (nth 0 cache-details)) " "
 	                dictname ")\n"
-	    "        cache))\n"))))
+	    "        cache))\n")))))
 
 
     ;; --- write to file ---
