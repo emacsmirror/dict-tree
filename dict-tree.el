@@ -346,7 +346,7 @@ If START or END is negative, it counts from the end."
    (:copier dictree--copy))
   name filename autosave modified
   comparison-function insert-function insfun rank-function rankfun
-  cache-policy cache-update-policy cache-threshold
+  cache-policy cache-threshold cache-update-policy
   lookup-cache complete-cache complete-ranked-cache
   regexp-cache regexp-ranked-cache
   fuzzy-match-cache fuzzy-match-ranked-cache
@@ -492,7 +492,7 @@ If START or END is negative, it counts from the end."
   (&optional
    name filename autosave unlisted
    comparison-function insert-function rank-function
-   cache-policy cache-update-policy cache-threshold
+   cache-policy cache-threshold cache-update-policy
    key-savefun key-loadfun
    data-savefun data-loadfun
    plist-savefun plist-loadfun
@@ -614,7 +614,7 @@ structure. See `trie-create' for details."
 	 (dictree--create
 	  filename (when name (symbol-name name)) autosave unlisted
 	  comparison-function insert-function rank-function
-	  cache-policy cache-update-policy cache-threshold
+	  cache-policy cache-threshold cache-update-policy
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -637,7 +637,7 @@ structure. See `trie-create' for details."
      name filename autosave unlisted
      &key
      comparison-function insert-function rank-function
-     cache-policy cache-update-policy cache-threshold
+     cache-policy cache-threshold cache-update-policy
      key-savefun key-loadfun
      data-savefun data-loadfun
      plist-savefun plist-loadfun
@@ -667,7 +667,7 @@ underlying data structure. See `trie-create' for details."
 	 (dictree--create-custom
 	  filename (when name (symbol-name name)) autosave unlisted
 	  comparison-function insert-function rank-function
-	  cache-policy cache-update-policy cache-threshold
+	  cache-policy cache-threshold cache-update-policy
 	  key-savefun key-loadfun
 	  data-savefun data-loadfun
 	  plist-savefun plist-loadfun
@@ -700,7 +700,7 @@ underlying data structure. See `trie-create' for details."
    &optional
    name filename autosave unlisted
    combine-function
-   cache-policy cache-update-policy cache-threshold)
+   cache-policy cache-threshold cache-update-policy)
   "Create a meta-dictionary based on the list of dictionaries
 in DICTIONARY-LIST.
 
@@ -728,8 +728,7 @@ CACHE-THRESHOLD argument is ignored and caching is disabled."
 	  dictionary-list filename (when name (symbol-name name))
 	  autosave unlisted
 	  combine-function
-	  cache-policy cache-update-policy
-	  (when name cache-threshold)
+	  cache-policy (when name cache-threshold) cache-update-policy
 	 )))
     ;; store dictionary in variable NAME
     (when name (set name dict))
@@ -2416,7 +2415,7 @@ Returns nil if the stack is empty."
 	    (puthash (list arg auxargs reverse)
 		     (dictree--cache-create res maxnum)
 		     (funcall cachefun dic))))))
-      
+
       ;; merge new result into results list
       (setq results
 	    (dictree--merge
