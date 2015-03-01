@@ -216,20 +216,6 @@ If START or END is negative, it counts from the end."
   		 (cons (car b) (dictree--cell-data (cdr b)))))))
 
 
-;; return wrapped rankfun to ignore fuzzy query distance data
-;; (these always get wrapped again by `dictree--wrap-rankfun')
-(if (trie-lexical-binding-p)
-    (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
-      (lambda (a b)
-	(funcall rankfun
-		 (cons (caar a) (cdr a))
-		 (cons (caar b) (cdr b)))))
-  (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
-    `(lambda (a b)
-       (,rankfun (cons (caar a) (cdr a))
-		 (cons (caar b) (cdr b))))))
-
-
 ;; return wrapped combfun to deal with data wrapping
 (if (trie-lexical-binding-p)
     (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
@@ -262,6 +248,55 @@ If START or END is negative, it counts from the end."
 	(funcall resultfun (car res) (dictree--cell-data (cdr res)))))
   (defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
     `(lambda (res) (,resultfun (car res) (dictree--cell-data (cdr res))))))
+
+
+;; return wrapped rankfun to ignore regexp grouping data
+;; (these functions always get wrapped again by `dictree--wrap-rankfun')
+(if (trie-lexical-binding-p)
+    (defun dictree--wrap-regexp-rankfun (rankfun)
+      (lambda (a b)
+	;; if car of argument contains a key+group list rather than a straight
+	;; key, remove group list
+	;; FIXME: the test for straight key, below, will fail if the key is a
+	;;        list, and the first element of the key is itself a list
+	;;        (there might be no easy way to fully fix this...)
+	(unless (or (atom (car a))
+		    (and (listp (car a)) (not (sequencep (caar a)))))
+	  (setq a (cons (caar a) (cdr a))))
+	(unless (or (atom (car b))
+		    (and (listp (car b)) (not (sequencep (caar b)))))
+	  (setq b (cons (caar b) (cdr b))))
+	(funcall rankfun a b)))
+  (defun dictree--wrap-regexp-rankfun (rankfun)
+    `(lambda (a b)
+       ;; if car of argument contains a key+group list rather than a straight
+       ;; key, remove group list
+       ;; FIXME: the test for straight key, below, will fail if the key is a
+       ;;        list, and the first element of the key is itself a list
+       ;;        (there might be no easy way to fully fix this...)
+       (unless (or (atom (car a))
+  		   (and (listp (car a))
+  		       (not (sequencep (caar a)))))
+  	 (setq a (cons (caar a) (cdr a))))
+       (unless (or (atom (car b))
+  		   (and (listp (car b))
+  			(not (sequencep (caar b)))))
+  	 (setq b (cons (caar b) (cdr b))))
+       (,rankfun a b))))
+
+
+;; return wrapped rankfun to ignore fuzzy query distance data
+;; (these functions always get wrapped again by `dictree--wrap-rankfun')
+(if (trie-lexical-binding-p)
+    (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
+      (lambda (a b)
+	(funcall rankfun
+		 (cons (nth 0 (car a)) (cdr a))
+		 (cons (nth 0 (car b)) (cdr b)))))
+  (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
+    `(lambda (a b)
+       (,rankfun (cons (nth 0 (car a)) (cdr a))
+		 (cons (nth 0 (car b)) (cdr b))))))
 
 
 ;; construct lexicographic sort function from DICT's comparison function
@@ -1455,12 +1490,12 @@ PREFIX is a prefix of STR."
     ;; if key was...
     (cond
      ;; deleted and in cached result: remove cache entry and re-run the
-     ;; same completion to update the cache
+     ;; same regexp search to update the cache
      ((and deleted cmpl)
       (remhash (list regexp auxargs reverse) (dictree-complete-cache dict))
       (dictree-regexp-search dict regexp nil maxnum reverse))
-     ;; modified and not in cached result: merge it into the completion
-     ;; list, retaining only the first maxnum
+     ;; modified and not in cached result: merge it into the results list,
+     ;; retaining only the first maxnum
      ((and (not deleted) (not cmpl))
       (save-match-data
 	(set-match-data nil)
@@ -1513,8 +1548,8 @@ PREFIX is a prefix of STR."
      ((and deleted cmpl)
       (remhash (list regexp auxargs reverse) cache)
       (dictree-regexp-search dict regexp 'ranked maxnum reverse))
-     ;; modified and not in cached result: merge it into the completion
-     ;; list, retaining only the first maxnum
+     ;; modified and not in cached result: merge it into the results list,
+     ;; retaining only the first maxnum
      ((and (not deleted) (not cmpl))
       (save-match-data
 	(set-match-data nil)
@@ -1561,13 +1596,13 @@ PREFIX is a prefix of STR."
     ;; if key was...
     (cond
      ;; deleted and in cached result: remove cache entry and re-run the
-     ;; same completion to update the cache
+     ;; same query to update the cache
      ((and deleted match)
       (remhash (list string auxargs reverse)
 	       (dictree-fuzzy-match-cache dict))
       (dictree-fuzzy-match dict string (car auxargs) nil maxnum reverse))
-     ;; modified and not in cached result: merge it into the completion
-     ;; list, retaining only the first maxnum
+     ;; modified and not in cached result: merge it into the results list,
+     ;; retaining only the first maxnum
      ((and (not deleted) (not match))
       (setf (dictree--cache-results cache-entry)
 	    (dictree--merge
@@ -1590,8 +1625,8 @@ PREFIX is a prefix of STR."
 
 (defun dictree--synchronize-ranked-fuzzy-match-cache
   (dict cache-entry string auxargs reverse key newdata deleted)
-  ;; Synchronize DICT's ranked completion CACHE-ENTRY for STRING and REVERSE, for
-  ;; a KEY whose data was either updated to NEWDATA or DELETED.
+  ;; Synchronize DICT's ranked fuzzy-match CACHE-ENTRY for STRING and REVERSE,
+  ;; for a KEY whose data was either updated to NEWDATA or DELETED.
   (let* ((matches (dictree--cache-results cache-entry))
 	 (maxnum (dictree--cache-maxnum cache-entry))
 	 (match (assoc key matches))
@@ -1604,7 +1639,7 @@ PREFIX is a prefix of STR."
       (remhash (list string auxargs reverse)
 	       (dictree--fuzzy-match-ranked-cache dict))
       (dictree-fuzzy-match dict string (car auxargs) 'ranked maxnum reverse))
-     ;; modified and not in cached result: merge it into the completion list,
+     ;; modified and not in cached result: merge it into the results list,
      ;; retaining only the first maxnum
      ((and (not deleted) (not match))
       (setf (dictree--cache-results cache-entry)
@@ -1641,14 +1676,14 @@ PREFIX is a prefix of STR."
 	 (distance (Lewenstein-distance key prefix)))
     ;; if key was...
     (cond
-     ;; deleted and in cached result: remove cache entry and re-run the
-     ;; same completion to update the cache
+     ;; deleted and in cached result: remove cache entry and re-run the same
+     ;; query to update the cache
      ((and deleted cmpl)
       (remhash (list prefix auxargs reverse)
 	       (dictree-fuzzy-complete-cache dict))
       (dictree-fuzzy-complete dict prefix (car auxargs) nil maxnum reverse))
-     ;; modified and not in cached result: merge it into the completion
-     ;; list, retaining only the first maxnum
+     ;; modified and not in cached result: merge it into the results list,
+     ;; retaining only the first maxnum
      ((and (not deleted) (not cmpl))
       (setf (dictree--cache-results cache-entry)
 	    (dictree--merge
@@ -1671,8 +1706,8 @@ PREFIX is a prefix of STR."
 
 (defun dictree--synchronize-ranked-fuzzy-complete-cache
   (dict cache-entry prefix auxargs reverse key newdata deleted)
-  ;; Synchronize DICT's ranked completion CACHE-ENTRY for PREFIX and REVERSE, for
-  ;; a KEY whose data was either updated to NEWDATA or DELETED.
+  ;; Synchronize DICT's ranked fuzzy-completion CACHE-ENTRY for PREFIX and
+  ;; REVERSE, for a KEY whose data was either updated to NEWDATA or DELETED.
   (let* ((completions (dictree--cache-results cache-entry))
 	 (maxnum (dictree--cache-maxnum cache-entry))
 	 (cmpl (assoc key completions))
@@ -1931,10 +1966,7 @@ If TYPE is string, it must be possible to apply the function
 `string' to the elements of sequences stored in DICT.
 
 FUNCTION is applied in ascending order, or descending order if
-REVERSE is non-nil.
-
-Note: to avoid nasty dynamic scoping bugs, FUNCTION must *not*
-bind any variables with names commencing \"--\"."
+REVERSE is non-nil."
 
   ;; "rename" FUNCTION to something hopefully unique to lessen the
   ;; likelihood of dynamic scoping bugs caused by a supplied function
@@ -1991,11 +2023,7 @@ stored in DICT.
 The FUNCTION will be applied and the results combined in
 asscending \"lexicographic\" order (i.e. the order defined by the
 dictionary's comparison function; cf. `dictree-create'), or
-descending order if REVERSE is non-nil.
-
-Note: to avoid nasty dynamic scoping bugs, FUNCTION and
-COMBINATOR must *not* bind any variables with names
-commencing \"--\"."
+descending order if REVERSE is non-nil."
 
   ;; try to avoid dynamic scoping bugs
   (let ((--dictree-mapf--function function)
@@ -2046,12 +2074,9 @@ Note that if you don't care about the order in which FUNCTION is
 applied, just that the resulting list is in the correct order,
 then
 
-  (trie-mapf function #'cons trie type (not reverse))
+  (dictree-mapf function #'cons dict type (not reverse))
 
-is more efficient.
-
-Note: to avoid nasty dynamic scoping bugs, FUNCTION must *not*
-bind any variables with names commencing \"--\"."
+is more efficient."
   (nreverse (dictree-mapf function #'cons dict type reverse)))
 
 
@@ -2341,7 +2366,7 @@ included in the stack. All sequences in the list must be of the
 same type.
 
 Note that any modification to DICT *immediately* invalidates all
-trie-stacks created before the modification (in particular,
+dictree-stacks created before the modification (in particular,
 calling `dictree-stack-pop' will give unpredictable results).
 
 Operations on dictree-stacks are significantly more efficient
@@ -2515,8 +2540,7 @@ Returns nil if the stack is empty."
 	(setq res
 	      (dictree--do-query dic arg auxargs triefun stackfun
 				 rank-function maxnum reverse
-				 (when filter
-				   (dictree--wrap-filter filter)))))
+				 (dictree--wrap-filter filter))))
 
        ;; if there's a cache entry with enough results, use it
        ((and (setq cache-entry
@@ -2594,7 +2618,7 @@ Returns nil if the stack is empty."
 	  (when (or (null filter) (funcall filter res))
 	    (if rank-function
 		(heap-add heap res)   ; for ranked query, add to heap
-	      (push res results)) ; for lexicographic query, add to list
+	      (push res results))     ; for lexicographic query, add to list
 	    (incf i)))
 	(if (null rank-function)
 	    ;; for lexicographic query, reverse and return result list (we
@@ -2647,8 +2671,8 @@ If optional argument RANK-FUNCTION is t, the completions are
 sorted according to the dictionary's rank-function (see
 `dictree-create'). Any non-nil value that *is* a function
 over-rides this. In that case, RANK-FUNCTION should accept two
-arguments, both cons cells. The car of each contains a sequence
-from the trie (of the same type as PREFIX), the cdr contains its
+arguments, both cons cells. The car of each contains a completion
+from DICT (of the same type as PREFIX), the cdr contains its
 associated data. The RANK-FUNCTION should return non-nil if first
 argument is ranked strictly higher than the second, nil
 otherwise.
@@ -2713,7 +2737,7 @@ completion, and its associated data."
 (defun dictree-regexp-search
   (dict regexp
    &optional rank-function maxnum reverse no-cache filter resultfun)
-  "Return an alist containing all matches for REGEXP in TRIE
+  "Return an alist containing all matches for REGEXP in DICT
 along with their associated data, in the order defined by
 RANKFUN, defauling to \"lexicographic\" order. If REVERSE is
 non-nil, the completions are sorted in the reverse order. Returns
@@ -2728,12 +2752,13 @@ keys, use a meta-dictionary; see `dictree-create-meta-dict'.)
 
 REGEXP is a regular expression, but it need not necessarily be a
 string. It must be a sequence (vector, list of string) whose
-elements are either elements of the same type as elements of the
-trie keys (which behave as literals in the regexp), or any of the
+elements are either of the same type as elements of DICT
+keys (these behave as literals in the regexp), or any of the
 usual regexp special characters and backslash constructs. If
 REGEXP is a string, it must be possible to apply `string' to
-individual elements of the keys stored in the trie. The matches
-returned in the alist will be sequences of the same type as KEY.
+individual elements of the keys stored in DICT. The matches
+returned in the alist will be sequences of the same type as
+REGEXP.
 
 Only a subset of the full Emacs regular expression syntax is
 supported. There is no support for regexp constructs that are
@@ -2747,20 +2772,14 @@ beginning and end of the regexp to get an unanchored match).
 
 If the regexp contains any non-shy grouping constructs, subgroup
 match data is included in the results. In this case, the car of
-each match is no longer just a key. Instead, it is a list whose
-first element is the matching key, and whose remaining elements
-are cons cells whose cars and cdrs give the start and end indices
+each match is no longer just a key. Instead, each element of the
+results list has the form
+
+    ((KEY (START1 . END1) (START2 . END2) ...) . DATA)
+
+where the (START . END) cons cells give the start and end indices
 of the elements that matched the corresponding groups, in order.
 
-If optional argument RANK-FUNCTION is t, the matches are sorted
-according to the dictionary's rank-function (see
-`dictree-create'). Any non-nil value that *is* a function
-over-rides this. In that case, RANK-FUNCTION should accept two
-arguments, both cons cells. The car of each contains a sequence
-from the dictionary (of the same type as REGEXP), the cdr
-contains its associated data. The RANK-FUNCTION should return
-non-nil if first argument is ranked strictly higher than the
-second, nil otherwise.
 
 The optional integer argument MAXNUM limits the results to the
 first MAXNUM matches. The default is to return all matches.
@@ -2769,17 +2788,41 @@ If the optional argument NO-CACHE is non-nil, it prevents caching
 of the result. Ignored for dictionaries that do not have wildcard
 caching enabled.
 
+
+If optional argument RANK-FUNCTION is t, the matches are sorted
+according to the dictionary's rank-function (see
+`dictree-create').
+
+Any other non-nil value of RANK-FUNCTION should be a function
+which accepts two arguments. If the regexp does not contain any
+non-shy grouping constructs, both arguments are (KEY . DATA) cons
+cells, where the car is a sequence of the same type as REGEXP. If
+the regexp does contain non-shy grouping constructs, both
+arguments are of the form
+
+    ((KEY (START1 . END1) (START2 . END2) ...) . DATA)
+
+RANKFUN should return non-nil if first argument is ranked
+strictly higher than the second, nil otherwise.
+
+
 The FILTER argument sets a filter function for the matches. If
 supplied, it is called for each possible match with two
-arguments: the matching key, and its associated data. If the
-filter function returns nil, the match is not included in the
-results, and does not count towards MAXNUM.
+arguments: a key and its associated data. If the regexp contains
+non-shy grouping constructs, the first argument is of the form
+
+    (KEY (START1 . END1) (START2 . END2) ...)
+
+If the FILTER function returns nil, the match is not included in
+the results, and does not count towards MAXNUM.
+
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
-accept two arguments: a key and its associated data. It's return
-value is what gets added to the final result list, instead of the
-default key-data cons cell."
+accept two arguments, of the same form as those for FILTER (see
+above). Its return value is what gets added to the final result
+list, instead of the default key-data cons cell."
+
   ;; run regexp query
   (dictree--query
    dict regexp nil
@@ -2797,7 +2840,8 @@ default key-data cons cell."
    (when rank-function
      (if (functionp rank-function)
 	 rank-function
-       (dictree-rank-function (if (listp dict) (car dict) dict))))
+       (dictree--wrap-regexp-rankfun
+	(dictree-rank-function (if (listp dict) (car dict) dict)))))
    maxnum reverse no-cache filter resultfun))
 
 
@@ -2815,6 +2859,14 @@ the order defined by RANKFUN, defauling to \"lexicographic\"
 order. If REVERSE is non-nil, the matches are sorted in the
 reverse order. Returns nil if no completions are found.
 
+Returns a list of matches, with elements of the form:
+
+    ((KEY . DIST) . DATA)
+
+where KEY is a matching key from the trie, DATA its associated
+data, and DIST is its Lewenstein distance \(edit distance\) from
+STRING.
+
 DICT can also be a list of dictionaries, in which case matches
 are sought in all dictionaries in the list. (Note that if the
 same key appears in multiple dictionaries, the alist may contain
@@ -2822,19 +2874,20 @@ the same key multiple times, each copy associated with the data
 from a different dictionary. If you want to combine identical
 keys, use a meta-dictionary; see `dictree-create-meta-dict'.)
 
-STRING is a sequence (vector, list or string), whose elements are
-of the same type as elements of the trie keys. If STRING is a
-string, it must be possible to apply `string' to individual
-elements of the keys stored in the trie. The KEYs returned in the
-list will be sequences of the same type as STRING.
+STRING is a sequence (vector, list or string), whose elements
+must be of the same type as elements of the keys stored in
+DICT. If STRING is a string, it must be possible to apply
+`string' to individual elements of DICT keys. The KEYs returned
+in the list will be sequences of the same type as STRING.
 
 DISTANCE must be an integer, and specifies the maximum Lewenstein
 distance \(edit distances\) of matches from STRING.
 
-If optional argument RANK-FUNCTION is 'distance, the matches are
-sorted according to their Lewenstein distance from STRING. If it
-is t, the matches are sorted according to the dictionary's
-rank-function (see `dictree-create').
+
+If optional argument RANK-FUNCTION is the symbol `distance', the
+matches are sorted according to their Lewenstein distance from
+STRING. If it is t, the matches are sorted according to the
+dictionary's rank-function (see `dictree-create').
 
 Any other non-nil value of RANK-FUNCTION should be a function
 which accepts two arguments, both of the form
@@ -2847,6 +2900,7 @@ its associated data. The RANK-FUNCTION should return non-nil if
 the first argument is ranked strictly higher than the second, nil
 otherwise.
 
+
 The optional integer argument MAXNUM limits the results to the
 first MAXNUM matches. The default is to return all matches.
 
@@ -2855,15 +2909,16 @@ caching of the result.
 
 The FILTER argument sets a filter function for the matches. If
 supplied, it is called for each possible match with two
-arguments: the matching key, and its associated data. If the
-filter function returns nil, the match is not included in the
-results, and does not count towards MAXNUM.
+arguments: a (KEY . DIST) cons cell, and DATA. If the filter
+function returns nil, the match is not included in the results,
+and does not count towards MAXNUM.
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
-accept two arguments: a KEY and a (DIST . DATA) cons cell. Its
+accept two arguments: a (KEY . DIST) cons cell, and DATA. Its
 return value is what gets added to the final result list, instead
 of the default key-dist-data list."
+
   ;; run fuzzy-match query
   (dictree--query
    dict string (list distance)
@@ -2897,6 +2952,15 @@ the order defined by RANKFUN, defauling to \"lexicographic\"
 order. If REVERSE is non-nil, the matches are sorted in the
 reverse order. Returns nil if no completions are found.
 
+Returns a list of completions, with elements of the form:
+
+    ((KEY DIST PFXLEN) . DATA)
+
+where KEY is a matching completion from the trie, DATA its
+associated data, PFXLEN is the length of the prefix part of KEY,
+and DIST is its Lewenstein distance \(edit distance\) from
+PREFIX.
+
 DICT can also be a list of dictionaries, in which case matches
 are sought in all dictionaries in the list. (Note that if the
 same key appears in multiple dictionaries, the alist may contain
@@ -2904,26 +2968,32 @@ the same key multiple times, each copy associated with the data
 from a different dictionary. If you want to combine identical
 keys, use a meta-dictionary; see `dictree-create-meta-dict'.)
 
-PREFIX is a sequence (vector, list or string), whose elements are
-of the same type as elements of the trie keys. If STRING is a
-string, it must be possible to apply `string' to individual
-elements of the keys stored in the trie. The KEYs returned in the
-list will be sequences of the same type as STRING.
+PREFIX is a sequence (vector, list or string), whose elements
+must be of the same type as elements of the keys stored in
+DICT. If PREFIX is a string, it must be possible to apply
+`string' to individual elements of DICT keys. The KEYs returned
+in the list will be sequences of the same type as PREFIX.
 
 DISTANCE must be an integer, and specifies the maximum Lewenstein
 distance \(edit distances\) of prefixes from PREFIX.
 
-If optional argument RANK-FUNCTION is 'distance, the matches are
-sorted according to their Lewenstein distance from STRING. If it
-is any other non-nil value that is not a function, the matches
-are sorted according to the dictionary's rank-function (see
-`dictree-create'). Any non-nil value that *is* a function
-over-rides this. In that case, RANK-FUNCTION should accept two
-arguments, both cons cells. The car of each contains a sequence
-from the dictionary (of the same type as STRING), the cdr
-contains its associated data. The RANK-FUNCTION should return
-non-nil if first argument is ranked strictly higher than the
-second, nil otherwise.
+
+If optional argument RANK-FUNCTION is the symbol `distance', the
+matches are sorted by increasing Lewenstein distance of their
+prefix \(with same-distance prefixes ordered
+lexicographically\). If it is t, the matches are sorted according
+to the dictionary's rank-function (see `dictree-create').
+
+Any other non-nil value of RANK-FUNCTION should be a function
+that accepts two arguments, both of the form:
+
+    ((KEY DIST PFXLEN) . DATA)
+
+where KEY is a completion (of the same type as PREFIX), DIST is
+its Lewenstein distances from PREFIX, and DATA is its associated
+data. RANKFUN should return non-nil if first argument is ranked
+strictly higher than the second, nil otherwise.
+
 
 The optional integer argument MAXNUM limits the results to the
 first MAXNUM matches. The default is to return all matches.
@@ -2932,17 +3002,19 @@ If the optional argument NO-CACHE is non-nil, it prevents caching
 of the result. Ignored for dictionaries that do not have
 fuzzy-match caching enabled.
 
+
 The FILTER argument sets a filter function for the matches. If
 supplied, it is called for each possible match with two
-arguments: the matching key, and its associated data. If the
-filter function returns nil, the match is not included in the
-results, and does not count towards MAXNUM.
+arguments: a (KEY DIST PFXLEN) list, and DATA. If the filter
+function returns nil, the match is not included in the results,
+and does not count towards MAXNUM.
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
-accept two arguments: a KEY and a (DIST . DATA) cons cell. Its
+accept two arguments: a (KEY DIST PFXLEN) list, and DATA. Its
 return value is what gets added to the final result list, instead
 of the default key-dist-data list."
+
   ;; run fuzzy-complete query
   (dictree--query
    dict prefix (list distance)
