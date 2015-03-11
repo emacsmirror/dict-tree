@@ -52,6 +52,10 @@
 ;; according to any other desired ranking. The results can also be limited to
 ;; a given number of matches.
 ;;
+;; These sophisticated string queries are fast even for very large dict-trees,
+;; and dict-tree's also cache query results (and automatically keep these
+;; caches synchronised) to speed up queries even further.
+;;
 ;; Other functions allow you to:
 ;;
 ;; - create dict-tree stack objects, which allow efficient access to the
@@ -63,9 +67,12 @@
 ;; - map over all strings in alphabetical order
 ;;   (`dictree-mapc', `dictree-mapcar' and `dictree-mapf')
 ;;
-;; These sophisticated string queries are fast even for very large dict-trees,
-;; and dict-tree's also cache query results (and automatically keep these
-;; caches synchronised) to speed up queries even further.
+;; Dict-trees can be combined together into a "meta dict-tree", which combines
+;; the data from identical keys in its constituent dict-trees, in whatever way
+;; you specify (`dictree-create-meta-dict'). Any number of dict-trees can be
+;; combined in this way. Meta-dicts behave *exactly* like dict-trees: all of
+;; the above functions work on meta-dicts as well as dict-trees, and
+;; meta-dicts can themselves be used in new meta-dicts.
 ;;
 ;; The package also provides persistent storage of dict-trees to file.
 ;; (`dictree-save', `dictree-write', `dictee-load')
@@ -3782,7 +3789,38 @@ extension, suitable for passing to `load-library'."
 (defun dictree--edebug-pretty-print (object)
   (cond
    ((dictree-p object)
-    (concat "#<dict-tree \"" (dictree-name object) "\">"))
+    (concat "#<dict-tree \"" (dictree-name object) "\""
+	    (if (dictree--lookup-cache object)
+		(concat " lookup "
+			(prin1-to-string
+			 (hash-table-count
+			  (dictree--lookup-cache object))))
+	      "")
+	    (if (dictree--complete-cache object)
+		(concat " complete "
+			(prin1-to-string
+			 (hash-table-count
+			  (dictree--complete-cache object))))
+	      "")
+	    (if (dictree--regexp-cache object)
+		(concat " regexp "
+			(prin1-to-string
+			 (hash-table-count
+			  (dictree--regexp-cache object))))
+	      "")
+	    (if (dictree--fuzzy-match-cache object)
+		(concat " fuzzy-match "
+			(prin1-to-string
+			 (hash-table-count
+			  (dictree--fuzzy-match-cache object))))
+	      "")
+	    (if (dictree--fuzzy-complete-cache object)
+		(concat " fuzzy-complete "
+			(prin1-to-string
+			 (hash-table-count
+			  (dictree--fuzzy-complete-cache object))))
+	      "")
+	    ">"))
    ((null object) "nil")
    ((let ((dlist object) (test t))
       (while (or (dictree-p (car-safe dlist))
