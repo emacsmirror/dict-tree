@@ -28,18 +28,31 @@
 ;;; Commentary:
 ;;
 ;; A dict-tree (created using `dictree-create') is used to store strings,
-;; along with arbitrary data associated with each string. As well as basic
-;; data insertion (`dictree-insert'), manipulation (`dictree-insert'), and
-;; retrieval (`dictree-lookup', `dictree-member-p'), a dict-tree can perform
-;; sophisticated queries on strings, including:
+;; along with arbitrary data associated with each string. (Note that the
+;; "strings" can be any sequence data type, not just Elisp strings.) As well
+;; as basic data insertion (`dictree-insert'), manipulation
+;; (`dictree-insert'), and retrieval (`dictree-lookup', `dictree-member-p'), a
+;; dict-tree can perform sophisticated queries on strings, including:
 ;;
-;; - retrieve all (or a given number of) strings with a given prefix, ranking
-;;   the results in alphabetical or any other given order
+;; - retrieve all completions of a prefix
 ;;   (`dictree-complete')
 ;;
-;; - retrieve all (or a given number of) strings that match a regular
-;;   expression, ranking the results in alphabetical or any other given order
+;; - retrieve all strings that match a regular expression
 ;;   (`dictree-regexp-search')
+;;
+;; - retrieve all fuzzy matches to a string, i.e. matches within a specified
+;;   Lewenstein distance a.k.a. edit distance
+;;   (`dictree-fuzzy-match')
+;;
+;; - retrieve all fuzzy completions of a prefix, i.e. completions of prefixes
+;;   within a specified Lewenstein distance
+;;   (`dictree-fuzzy-complete')
+;;
+;; The results of all of these queries can be ranked in alphabetical order, or
+;; according to any other desired ranking. The results can also be limited to
+;; a given number of matches.
+;;
+;; Other functions allow you to:
 ;;
 ;; - create dict-tree stack objects, which allow efficient access to the
 ;;   strings in the dictionary or in query results as though they were sorted
@@ -47,18 +60,17 @@
 ;;   dict-trees)
 ;;   (`dictree-stack', `dictree-complete-stack', `dictree-regexp-stack')
 ;;
-;; - map over all strings in lexicographic order
+;; - map over all strings in alphabetical order
 ;;   (`dictree-mapc', `dictree-mapcar' and `dictree-mapf')
 ;;
 ;; These sophisticated string queries are fast even for very large dict-trees,
-;; and dict-tree's can also cache query results (and automatically keep these
+;; and dict-tree's also cache query results (and automatically keep these
 ;; caches synchronised) to speed up queries even further.
 ;;
-;; The package also provides persistent storage of dict-trees to file, and can
-;; save modified dictionaries automatically if desired.
+;; The package also provides persistent storage of dict-trees to file.
 ;; (`dictree-save', `dictree-write', `dictee-load')
 ;;
-;; This package uses the trie package trie.el. the tagged NFA package tNFA.el,
+;; This package uses the trie package trie.el, the tagged NFA package tNFA.el,
 ;; and the heap package heap.el.
 
 
