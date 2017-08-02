@@ -1,6 +1,6 @@
 ;;; dict-tree.el --- Dictionary data structure  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2004-2015  Free Software Foundation, Inc
+;; Copyright (C) 2004-2015, 2017  Free Software Foundation, Inc
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
 ;; Version: 0.13
@@ -86,9 +86,6 @@
 (eval-when-compile (require 'cl))
 (require 'trie)
 (require 'tNFA)
-(require 'bytecomp)
-
-
 
 
 ;;; ================================================================
@@ -926,7 +923,7 @@ for meta-dictionary DICT.")
 	   ,param)))
 
 
-(defsubst dictree-lookup-cache (dict)
+(defun dictree-lookup-cache (dict)
   ;; Return the lookup cache for dictionary DICT.
   (if (dictree--meta-dict-p dict)
       (dictree--meta-dict-lookup-cache dict)
@@ -1679,7 +1676,7 @@ additional information, and can only be retrieved using
    ;; set PROPERTY for KEY in all constituent dicts of a meta-dict
    ((dictree--meta-dict-p dict)
     (warn "Setting %s property for key %s in all constituent\
- dictionaries of meta-dicttionary %s" property key (dictree-name dict))
+ dictionaries of meta-dictionary %s" property key (dictree-name dict))
     (setf (dictree-modified dict) t)
     (let (dictree--put-property-ret)
       (mapc (lambda (dic k p v)
@@ -1760,8 +1757,8 @@ set. (See also `dictree-member-p' for testing existence alone.)"
   "Apply FUNCTION to all entries in dictionary DICT,
 for side-effects only.
 
-FUNCTION will be passed two arguments: a key of type TYPE
-\(string, vector, or list, defaulting to vector\) from the
+FUNCTION will be passed two arguments: a key of type
+TYPE (`string', `vector', or `list', defaulting to `vector') from the
 dictionary, and the data associated with that key. The dictionary
 entries will be traversed in \"lexicographic\" order, i.e. the
 order defined by the dictionary's comparison function (cf.
@@ -1819,9 +1816,9 @@ and combine the results using COMBINATOR.
 FUNCTION should take two arguments: a key sequence from the
 dictionary and its associated data.
 
-Optional argument TYPE (one of the symbols vector, lisp or
-string; defaults to vector) sets the type of sequence passed to
-FUNCTION. If TYPE is string, it must be possible to apply the
+Optional argument TYPE (one of the symbols `vector', `lisp' or
+`string'; defaults to `vector') sets the type of sequence passed to
+FUNCTION. If TYPE is `string', it must be possible to apply the
 function `string' to the individual elements of key sequences
 stored in DICT.
 
@@ -1864,9 +1861,9 @@ and make a list of the results.
 FUNCTION should take two arguments: a key sequence from the
 dictionary and its associated data.
 
-Optional argument TYPE (one of the symbols vector, lisp or
-string; defaults to vector) sets the type of sequence passed to
-FUNCTION. If TYPE is string, it must be possible to apply the
+Optional argument TYPE (one of the symbols `vector', `list' or
+`string'; defaults to `vector') sets the type of sequence passed
+to FUNCTION. If TYPE is string, it must be possible to apply the
 function `string' to the individual elements of key sequences
 stored in DICT.
 
@@ -2028,8 +2025,8 @@ defined by the DICT's comparison function, or in reverse order if
 REVERSE is non-nil. Calling `dictree-stack-pop' pops the top
 element (a key and its associated data) from the stack.
 
-Optional argument TYPE (one of the symbols vector, lisp or
-string) sets the type of sequence used for the keys.
+Optional argument TYPE (one of the symbols `vector', `list' or
+`string') sets the type of sequence used for the keys.
 
 Note that any modification to DICT *immediately* invalidates all
 dictree-stacks created before the modification (in particular,
@@ -2485,7 +2482,7 @@ results, and doesn't count towards MAXNUM.
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
-accept two arguments: a key and its associated data. It's return
+accept two arguments: a key and its associated data. Its return
 value is what gets added to the final result list, instead of the
 default key-data cons cell."
   ;; run completion query
@@ -2818,7 +2815,7 @@ of the default key-dist-data list."
 ;;                    Persistent storage
 
 (defun dictree-save (dict &optional compilation)
-  "Save dictionary DICT to it's associated file.
+  "Save dictionary DICT to its associated file.
 Use `dictree-write' to save to a different file.
 
 Optional argument COMPILATION determines whether to save the
@@ -2865,9 +2862,9 @@ preference to the uncomplied version, as it loads
 faster. However, only the uncompiled version is portable between
 different Emacs versions.
 
-If optional argument COMPILATION is the symbol 'compiled, only
+If optional argument COMPILATION is the symbol `compiled', only
 the compiled version will be created, whereas if it is the symbol
-'uncompiled, only the uncompiled version will be created.
+`uncompiled', only the uncompiled version will be created.
 
 Interactively, DICT and FILENAME are read from the mini-buffer,
 and OVERWRITE is the prefix argument."
@@ -3117,7 +3114,8 @@ is the prefix argument."
 
   ;; remove dictionary from list of loaded dictionaries and unload it
   (setq dictree-loaded-list (delq dict dictree-loaded-list))
-  (unintern (dictree-name dict))
+  ;; We used `unintern' here before, but that's too dangerous!
+  (makunbound (dictree-name dict))
   (message "Dictionary %s unloaded" (dictree-name dict)))
 
 
@@ -3567,15 +3565,15 @@ appended to the end of it. Otherwise, a new buffer will be
 created. If BUFFER is omitted, the current buffer is used.
 
 TYPE determines the type of sequence to use to represent the
-keys, and should be one of the symbols string, vector or
-list. The default is vector.
+keys, and should be one of the symbols `string', `vector' or
+`list'. The default is `vector'.
 
 Note that if the data does not have a read syntax, the dumped
 data can not be used to recreate the dictionary using
 `dictree-populate-from-file'.
 
 Interactively, DICT and BUFFER are read from the mini-buffer,
-TYPE is always string."
+TYPE is always `string'."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-buffer
 		      "Buffer to dump to (defaults to current): "
@@ -3638,8 +3636,8 @@ as that used by `dictree-populate-from-file'. Prompts to overwrite
 FILENAME if it already exists, unless OVERWRITE is non-nil.
 
 TYPE determines the type of sequence to use to represent the
-keys, and should be one of the symbols string, vector or
-list. The default is vector.
+keys, and should be one of the symbols `string', `vector' or
+`list'. The default is `vector'.
 
 Note that if the data does not have a read syntax and no , the dumped
 data can not be used to recreate the dictionary using
@@ -3776,15 +3774,14 @@ extension, suitable for passing to `load-library'."
 ;; anyway, we don't lose much by doing this. If you *really* want to
 ;; print dictionaries in full whilst edebugging, despite this warning,
 ;; disable the advice.
-;;
-;; FIXME: We should probably use the `cust-print' features instead of advice
-;; here.
 
 
 (eval-when-compile
   (require 'edebug)
   (require 'advice))
 
+(defun dictree--prin1 (dict stream)
+  (princ (concat "#<dict-tree \"" (dictree-name dict) "\">") stream))
 
 (defun dictree--edebug-pretty-print (object)
   (cond
@@ -3831,44 +3828,47 @@ extension, suitable for passing to `load-library'."
 			     (concat "#<dict-tree \""
 				     (dictree-name d) "\">"))
 			   object " ") ")"))
-;; ((vectorp object)
-;;  (let ((pretty "[") (len (length object)))
-;;    (dotimes (i (1- len))
-;; 	(setq pretty
-;; 	      (concat pretty
-;; 		      (if (trie-p (aref object i))
-;; 			  "#<trie>" (prin1-to-string (aref object i))) " ")))
-;;    (concat pretty
-;; 	      (if (trie-p (aref object (1- len)))
-;; 		  "#<trie>" (prin1-to-string (aref object (1- len))))
-;; 	      "]")))
+   ;; ((vectorp object)
+   ;;  (let ((pretty "[") (len (length object)))
+   ;;    (dotimes (i (1- len))
+   ;; 	(setq pretty
+   ;; 	      (concat pretty
+   ;; 		      (if (trie-p (aref object i))
+   ;; 			  "#<trie>" (prin1-to-string (aref object i))) " ")))
+   ;;    (concat pretty
+   ;; 	      (if (trie-p (aref object (1- len)))
+   ;; 		  "#<trie>" (prin1-to-string (aref object (1- len))))
+   ;; 	      "]")))
    ))
 
+(if (fboundp 'cl-print-object)
+    (progn
+      (cl-defmethod cl-print-object ((object dictree-) stream)
+        (dictree--prin1 object stream))
+      (cl-defmethod cl-print-object ((object dictree--meta-dict) stream)
+        (dictree--prin1 object stream)))
 
-(when (fboundp 'ad-define-subr-args)
-  (ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun)))
+  (when (fboundp 'ad-define-subr-args)
+    (ad-define-subr-args 'edebug-prin1 '(object &optional printcharfun)))
 
-(defadvice edebug-prin1
-  (around dictree activate compile preactivate)
-  (let ((pretty (dictree--edebug-pretty-print object)))
-    (if pretty
-	(progn
-	  (prin1 pretty printcharfun)
-	  (setq ad-return-value pretty))
-    ad-do-it)))
+  (defadvice edebug-prin1
+      (around dictree activate compile preactivate)
+    (let ((pretty (dictree--edebug-pretty-print object)))
+      (if pretty
+	  (progn
+	    (prin1 pretty printcharfun)
+	    (setq ad-return-value pretty))
+        ad-do-it)))
 
+  (when (fboundp 'ad-define-subr-args)
+    (ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape)))
 
-(when (fboundp 'ad-define-subr-args)
-  (ad-define-subr-args 'edebug-prin1-to-string '(object &optional noescape)))
-
-(defadvice edebug-prin1-to-string
-  (around dictree activate compile preactivate)
-  (let ((pretty (dictree--edebug-pretty-print object)))
-    (if pretty
-	(setq ad-return-value pretty)
-      ad-do-it)))
-
-
+  (defadvice edebug-prin1-to-string
+      (around dictree activate compile preactivate)
+    (let ((pretty (dictree--edebug-pretty-print object)))
+      (if pretty
+	  (setq ad-return-value pretty)
+        ad-do-it))))
 
 (provide 'dict-tree)
 
