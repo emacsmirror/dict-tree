@@ -267,6 +267,43 @@ If START or END is negative, it counts from the end."
   	 (setq b (cons (caar b) (dictree--cell-data (cdr b)))))
        (,rankfun a b))))
 
+;; return wrapped sortfun to ignore regexp grouping data
+(trie--if-lexical-binding
+    (defun dictree--wrap-regexp-sortfun (cmpfun &optional reverse)
+	(let ((sortfun (trie-construct-sortfun cmpfun reverse)))
+	  (lambda (a b)
+	    ;; if car of argument contains a key+group list rather than a
+	    ;; straight key, remove group list
+	    ;; FIXME: the test for straight key, below, will fail if the key
+	    ;;        is a list, and the first element of the key is itself a
+	    ;;        list (there might be no easy way to fully fix this...)
+	    (if (or (atom (car a))
+		    (and (listp (car a)) (not (sequencep (caar a)))))
+		(setq a (car a))
+	      (setq a (caar a)))
+	    (if (or (atom (car b))
+		    (and (listp (car b)) (not (sequencep (caar b)))))
+		(setq b (car b))
+	      (setq b (caar b)))
+	    (funcall sortfun a b))))
+  (defun dictree--wrap-regexp-sortfun (cmpfun &optional reverse)
+    (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
+      `(lambda (a b)
+	 ;; if car of argument contains a key+group list rather than a
+	 ;; straight key, remove group list
+	 ;; FIXME: the test for straight key, below, will fail if the key
+	 ;;        is a list, and the first element of the key is itself a
+	 ;;        list (there might be no easy way to fully fix this...)
+	 (if (or (atom (car a))
+		 (and (listp (car a)) (not (sequencep (caar a)))))
+	     (setq a (car a))
+	   (setq a (caar a)))
+	 (if (or (atom (car b))
+		 (and (listp (car b)) (not (sequencep (caar b)))))
+	     (setq b (car b))
+	   (setq b (caar b)))
+	 (,sortfun a b)))))
+
 
 ;; return wrapped rankfun to ignore fuzzy query distance data
 (trie--if-lexical-binding
@@ -279,6 +316,15 @@ If START or END is negative, it counts from the end."
     `(lambda (a b)
        (,rankfun (cons (nth 0 (car a)) (dictree--cell-data (cdr a)))
 		 (cons (nth 0 (car b)) (dictree--cell-data (cdr b)))))))
+
+;; return wrapped sortfun to ignore fuzzy query distance data
+(trie--if-lexical-binding
+    (defun dictree--wrap-fuzzy-sortfun (cmpfun &optional reverse)
+      (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
+	(lambda (a b) (funcall sortfun (car a) (car b)))))
+  (defun dictree--wrap-fuzzy-sortfun (cmpfun &optional reverse)
+    (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
+      `(lambda (a b) (,sortfun (car a) (car b))))))
 
 
 ;; return wrapped combfun to deal with data wrapping
@@ -430,8 +476,9 @@ If START or END is negative, it counts from the end."
 		 (dictionary-list
 		  &optional
 		  filename
-		  (name (file-name-sans-extension
-			 (file-name-nondirectory filename)))
+		  (name (when filename
+			  (file-name-sans-extension
+			   (file-name-nondirectory filename))))
 		  autosave
 		  _unlisted
 		  (combine-function #'+)
@@ -470,15 +517,13 @@ If START or END is negative, it counts from the end."
   ;; Return a list of all the tries on which DICT is based. If DICT is a
   ;; meta-dict, this recursively descends the hierarchy, gathering all
   ;; the tries from the base dictionaries.
-  (let (accumulate)
-    (dictree--do-trielist dict)
-    accumulate))
+  (dictree--do-trielist dict))
 
 (defun dictree--do-trielist (dict)
-  (declare (special accumulate))
   (if (dictree-meta-dict-p dict)
-      (mapc #'dictree--do-trielist (dictree--meta-dict-dictlist dict))
-    (setq accumulate (cons (dictree--trie dict) accumulate))))
+      (apply #'nconc (mapcar #'dictree--do-trielist
+			     (dictree--meta-dict-dictlist dict)))
+    (list (dictree--trie dict))))
 
 
 (defun dictree--merge (list1 list2 cmpfun &optional combfun maxnum)
@@ -1950,8 +1995,8 @@ Interactively, DICT is read from the mini-buffer."
 		  &aux
 		  (combfun (dictree--wrap-combfun
 			    (dictree--meta-dict-combine-function dict)))
-		  (sortfun (trie-construct-sortfun
-			    (dictree-comparison-function dict)))
+		  (sortfun (dictree--wrap-regexp-sortfun
+			    (dictree-comparison-function dict) 'reverse))
 		  (heap (heap-create
 			 (dictree--construct-meta-stack-heapfun
 			  sortfun reverse)
@@ -1969,7 +2014,7 @@ Interactively, DICT is read from the mini-buffer."
 		  &aux
 		  (combfun (dictree--wrap-combfun
 			    (dictree--meta-dict-combine-function dict)))
-		  (sortfun (trie-construct-sortfun
+		  (sortfun (dictree--wrap-fuzzy-sortfun
 			    (dictree-comparison-function dict)))
 		  (heap (heap-create
 			 (dictree--construct-meta-stack-heapfun
@@ -1988,7 +2033,7 @@ Interactively, DICT is read from the mini-buffer."
 		  &aux
 		  (combfun (dictree--wrap-combfun
 			    (dictree--meta-dict-combine-function dict)))
-		  (sortfun (trie-construct-sortfun
+		  (sortfun (dictree--wrap-fuzzy-sortfun
 			    (dictree-comparison-function dict)))
 		  (heap (heap-create
 			 (dictree--construct-meta-stack-heapfun
@@ -2056,10 +2101,10 @@ element (a key and its associated data) from the stack.
 PREFIX must be a sequence (vector, list or string) that forms the
 initial part of a DICT key. (If PREFIX is a string, it must be
 possible to apply `string' to individual elements of DICT keys.)
-The completions returned in the alist will be sequences of the
-same type as KEY. If PREFIX is a list of sequences, completions
-of all sequences in the list are included in the stack. All
-sequences in the list must be of the same type.
+The returned keys will be sequences of the same type as
+PREFIX. If PREFIX is a list of sequences, completions of all
+sequences in the list are included in the stack. All sequences in
+the list must be of the same type.
 
 Note that any modification to DICT *immediately* invalidates all
 dictree-stacks created before the modification (in particular,
@@ -2299,6 +2344,163 @@ Returns nil if the stack is empty."
 		(setq next (dictree--stack-first (heap-root heap))))))
 	  ;; return the combined dictionary element
 	  curr)))))
+
+
+
+
+;; ----------------------------------------------------------------
+;;                    dictree iterator generators
+
+;; dictree-stacks *are* iterators (with additional push and
+;; inspect-first-element operations). If we're running on a modern Emacs that
+;; includes the `generator' library, we can trivially define dictree iterator
+;; generators in terms of dictree-stacks.
+
+(heap--when-generators
+ (iter-defun dictree-iter (dict &optional type reverse)
+   "Return a dictree iterator object.
+
+Calling `iter-next' on this object will retrieve the next
+element (a cons cell containing a key and its associated data)
+from DICT in \"lexicographic\" order, i.e. the order defined by
+the DICT's comparison function, or in reverse order if REVERSE is
+non-nil.
+
+Optional argument TYPE (one of the symbols `vector', `list' or
+`string') sets the type of sequence used for the keys.
+
+Note that any modification to DICT *immediately* invalidates all
+iterators created from DICT before the modification (in
+particular, calling `iter-next' will give unpredictable
+results). If DICT is a meta-dict, this includes any modifications
+to its constituent dicts."
+   (let ((stack (dictree-stack dict type reverse)))
+     (while (not (dictree-stack-empty-p stack))
+       (iter-yield (dictree-stack-pop stack))))))
+
+
+(heap--when-generators
+ (iter-defun dictree-complete-iter (dict prefix &optional reverse)
+   "Return an iterator object for completions of PREFIX in DICT.
+
+Calling `iter-next' on this object will retrieve the next
+completion of PREFIX (a cons cell containing a key and its
+associated data) from DICT in \"lexicographic\" order, i.e. the
+order defined by DICT's comparison function, or in reverse order
+if REVERSE is non-nil.
+
+PREFIX must be a sequence (vector, list or string) that forms the
+initial part of a DICT key. (If PREFIX is a string, it must be
+possible to apply `string' to individual elements of DICT keys.)
+The returned keys will be sequences of the same type as
+PREFIX. If PREFIX is a list of sequences, completions of all
+sequences in the list are included in the stack. All sequences in
+the list must be of the same type.
+
+Note that any modification to DICT *immediately* invalidates all
+iterators created from DICT before the modification (in
+particular, calling `iter-next' will give unpredictable
+results). If DICT is a meta-dict, this includes any modifications
+to its constituent dicts."
+   (let ((stack (dictree-complete-stack dict prefix reverse)))
+     (while (not (dictree-stack-empty-p stack))
+       (iter-yield (dictree-stack-pop stack))))))
+
+
+(heap--when-generators
+ (iter-defun dictree-regexp-iter (dict regexp &optional reverse)
+   "Return an iterator object for REGEXP matches in DICT.
+
+Calling `iter-next' on this object will retrieve the next match
+\(a cons cell containing a key and its associated data\) in
+\"lexicographic\" order, i.e. the order defined by DICT's
+comparison function, or in reverse order if REVERSE is non-nil.
+
+REGEXP is a regular expression, but it need not necessarily be a
+string. It must be a sequence (vector, list of string) whose
+elements are either elements of the same type as elements of the
+keys in DICT (which behave as literals in the regexp), or any of
+the usual regexp special characters and backslash constructs. If
+REGEXP is a string, it must be possible to apply `string' to
+individual elements of the keys stored in DICT. The matches
+returned in the alist will be sequences of the same type as KEY.
+
+Back-references and non-greedy postfix operators are *not*
+supported, and the matches are always anchored, so `$' and `^'
+lose their special meanings.
+
+If the regexp contains any non-shy grouping constructs, subgroup
+match data is included in the results. In this case, the car of
+each match is no longer just a key. Instead, it is a list whose
+first element is the matching key, and whose remaining elements
+are cons cells whose cars and cdrs give the start and end indices
+of the elements that matched the corresponding groups, in order.
+
+Note that any modification to DICT *immediately* invalidates all
+iterators created from DICT before the modification (in
+particular, calling `iter-next' will give unpredictable
+results). If DICT is a meta-dict, this includes any modifications
+to its constituent dicts."
+   (let ((stack (dictree-regexp-stack dict regexp reverse)))
+     (while (not (dictree-stack-empty-p stack))
+       (iter-yield (dictree-stack-pop stack))))))
+
+(heap--when-generators
+ (iter-defun dictree-fuzzy-match-iter (dict string distance &optional reverse)
+   "Return an iterator object for fuzzy matches to STRING in DICT.
+
+Calling `iter-next' on this object will retrieve the next match
+\(a cons cell containing a key and its associated data\) in
+\"lexicographic\" order, i.e. the order defined by DICT's
+comparison function, or in reverse order if REVERSE is non-nil.
+
+STRING must be a sequence (vector, list or string), and DISTANCE
+must be an integer. (If STRING is a string, it must be possible
+to apply `string' to individual elements of DICT keys.) The
+returned keys will be sequences of the same type as STRING that
+are within Lewenstein distance DISTANCE of STRING. If STRING is a
+list of sequences, keys withing DISTANCE of any sequences in the
+list are included in the stack. All sequences in the list must be
+of the same type.
+
+Note that any modification to DICT *immediately* invalidates all
+iterators created from DICT before the modification (in
+particular, calling `iter-next' will give unpredictable
+results). If DICT is a meta-dict, this includes any modifications
+to its constituent dicts."
+   (let ((stack (dictree-fuzzy-match-stack dict string distance reverse)))
+     (while (not (dictree-stack-empty-p stack))
+       (iter-yield (dictree-stack-pop stack))))))
+
+
+(heap--when-generators
+ (iter-defun dictree-fuzzy-complete-iter (dict prefix distance &optional reverse)
+   "Return an iterator object for fuzzy completions of PREFIX in DICT.
+
+Calling `iter-next' on this object will retrieve the next fuzzy
+completion in \"lexicographic\" order, i.e. the order defined by
+DICT's comparison function, or in reverse order if REVERSE is
+non-nil. Each returned element has the form:
+
+    ((KEY . DIST) . DATA)
+
+PREFIX must be a sequence (vector, list or string), and DISTANCE
+must be an integer. (If PREFIX is a string, it must be possible
+to apply `string' to individual elements of DICT keys.) The
+returned keys will be sequences of the same type as STRING that
+are completions of prefixes within Lewenstein distance DISTANCE
+of PREFIX. If PREFIX is a list of sequences, completions within
+DISTANCE of any prefix in the list are included in the stack. All
+sequences in the list must be of the same type.
+
+Note that any modification to DICT *immediately* invalidates all
+iterators created from DICT before the modification (in
+particular, calling `iter-next' will give unpredictable
+results). If DICT is a meta-dict, this includes any modifications
+to its constituent dicts."
+   (let ((stack (dictree-fuzzy-complete-stack dict prefix distance reverse)))
+     (while (not (dictree-stack-empty-p stack))
+       (iter-yield (dictree-stack-pop stack))))))
 
 
 
