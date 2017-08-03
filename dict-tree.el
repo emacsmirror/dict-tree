@@ -205,7 +205,7 @@ If START or END is negative, it counts from the end."
 ;;                     Wrapping functions
 
 ;; return wrapped insfun to deal with data wrapping
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
       (lambda (new old)
 	(dictree--cell-set-data old (funcall insfun
@@ -220,7 +220,7 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped rankfun to deal with data wrapping
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
       (lambda (a b)
 	(funcall rankfun
@@ -233,7 +233,7 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped rankfun to ignore regexp grouping data
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--wrap-regexp-rankfun (rankfun)
       (lambda (a b)
 	;; if car of argument contains a key+group list rather than a straight
@@ -269,7 +269,7 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped rankfun to ignore fuzzy query distance data
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
       (lambda (a b)
 	(funcall rankfun
@@ -282,7 +282,7 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped combfun to deal with data wrapping
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
       (lambda (cell1 cell2)
 	(dictree--cell-create
@@ -301,7 +301,7 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped filter function to deal with data wrapping
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
       (lambda (key data) (funcall filter key (dictree--cell-data data))))
   (defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
@@ -309,7 +309,7 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped result function to deal with data wrapping
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
       (lambda (res)
 	(funcall resultfun (car res) (dictree--cell-data (cdr res)))))
@@ -318,7 +318,7 @@ If START or END is negative, it counts from the end."
 
 
 ;; construct lexicographic sort function from DICT's comparison function
-(if (trie-lexical-binding-p)
+(trie--if-lexical-binding
     (defun dictree--construct-sortfun (dict)  ; INTERNAL USE ONLY
       (let ((sortfun (trie-construct-sortfun
 		      (dictree-comparison-function dict))))
