@@ -121,13 +121,12 @@ If START or END is negative, it counts from the end."
 
 
 ;; `goto-line' without messing around with mark and messages
-(defmacro dictree--goto-line (line)
+(defun dictree--goto-line (line)
   "Goto line LINE, counting from line 1 at beginning of buffer."
-  `(progn
-     (goto-char 1)
-     (if (eq selective-display t)
-	 (re-search-forward "[\n\C-m]" nil 'no-error (1- ,line))
-       (forward-line (1- ,line)))))
+  (goto-char 1)
+  (if (eq selective-display t)
+      (re-search-forward "[\n\C-m]" nil 'no-error (1- line))
+    (forward-line (1- line))))
 
 
 
