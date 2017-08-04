@@ -3982,7 +3982,39 @@ extension, suitable for passing to `load-library'."
   (require 'advice))
 
 (defun dictree--prin1 (dict stream)
-  (princ (concat "#<dict-tree \"" (dictree-name dict) "\">") stream))
+  (princ (concat "#<dict-tree \"" (dictree-name dict) "\""
+		 (if (dictree--lookup-cache dict)
+		     (concat " lookup "
+			     (prin1-to-string
+			      (hash-table-count
+			       (dictree--lookup-cache dict))))
+		   "")
+		 (if (dictree--complete-cache dict)
+		     (concat " complete "
+			     (prin1-to-string
+			      (hash-table-count
+			       (dictree--complete-cache dict))))
+		   "")
+		 (if (dictree--regexp-cache dict)
+		     (concat " regexp "
+			     (prin1-to-string
+			      (hash-table-count
+			       (dictree--regexp-cache dict))))
+		   "")
+		 (if (dictree--fuzzy-match-cache dict)
+		     (concat " fuzzy-match "
+			     (prin1-to-string
+			      (hash-table-count
+			       (dictree--fuzzy-match-cache dict))))
+		   "")
+		 (if (dictree--fuzzy-complete-cache dict)
+		     (concat " fuzzy-complete "
+			     (prin1-to-string
+			      (hash-table-count
+			       (dictree--fuzzy-complete-cache dict))))
+		   "")
+		 ">")
+	 stream))
 
 (defun dictree--edebug-pretty-print (object)
   (cond
@@ -4070,6 +4102,7 @@ extension, suitable for passing to `load-library'."
       (if pretty
 	  (setq ad-return-value pretty)
         ad-do-it))))
+
 
 (provide 'dict-tree)
 
