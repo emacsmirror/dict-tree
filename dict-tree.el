@@ -41,7 +41,7 @@
 ;;   (`dictree-regexp-search')
 ;;
 ;; - retrieve all fuzzy matches to a string, i.e. matches within a specified
-;;   Lewenstein distance a.k.a. edit distance
+;;   Lewenstein distance (a.k.a. edit distance)
 ;;   (`dictree-fuzzy-match')
 ;;
 ;; - retrieve all fuzzy completions of a prefix, i.e. completions of prefixes
@@ -62,7 +62,13 @@
 ;;   strings in the dictionary or in query results as though they were sorted
 ;;   on a stack (useful for designing efficient algorithms on top of
 ;;   dict-trees)
-;;   (`dictree-stack', `dictree-complete-stack', `dictree-regexp-stack')
+;;   (`dictree-stack', `dictree-complete-stack', `dictree-regexp-stack',
+;;    `dictree-fuzzy-match-stack', `dictree-fuzzy-complete-stack')
+;;
+;; - generate dict-tree iterator objects which allow you to retrieve
+;;   successive elements by calling `iter-next'
+;;   (`dictree-iter', `dictree-complete-iter', `dictree-regexp-iter',
+;;    `dictree-fuzzy-match-iter', `dictree-fuzzy-complete-iter')
 ;;
 ;; - map over all strings in alphabetical order
 ;;   (`dictree-mapc', `dictree-mapcar' and `dictree-mapf')
