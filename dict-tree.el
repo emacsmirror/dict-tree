@@ -1926,7 +1926,7 @@ Note that if you don't care about the order in which FUNCTION is
 applied, just that the resulting list is in the correct order,
 then
 
-  (dictree-mapf function #'cons dict type (not reverse))
+  (dictree-mapf function #\\='cons dict type (not reverse))
 
 is more efficient."
   (nreverse (dictree-mapf function #'cons dict type reverse)))
