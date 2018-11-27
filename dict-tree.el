@@ -315,12 +315,12 @@ If START or END is negative, it counts from the end."
     (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
       (lambda (a b)
 	(funcall rankfun
-		 (cons (nth 0 (car a)) (dictree--cell-data (cdr a)))
-		 (cons (nth 0 (car b)) (dictree--cell-data (cdr b))))))
+		 (cons (car a) (dictree--cell-data (cdr a)))
+		 (cons (car b) (dictree--cell-data (cdr b))))))
   (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
     `(lambda (a b)
-       (,rankfun (cons (nth 0 (car a)) (dictree--cell-data (cdr a)))
-		 (cons (nth 0 (car b)) (dictree--cell-data (cdr b)))))))
+       (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
+		 (cons (car b) (dictree--cell-data (cdr b)))))))
 
 ;; return wrapped sortfun to ignore fuzzy query distance data
 (trie--if-lexical-binding
