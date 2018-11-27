@@ -3322,7 +3322,7 @@ is the prefix argument."
   ;; remove dictionary from list of loaded dictionaries and unload it
   (setq dictree-loaded-list (delq dict dictree-loaded-list))
   ;; We used `unintern' here before, but that's too dangerous!
-  (makunbound (dictree-name dict))
+  (makunbound (intern (dictree-name dict)))
   (message "Dictionary %s unloaded" (dictree-name dict)))
 
 
