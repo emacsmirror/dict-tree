@@ -1465,7 +1465,7 @@ PREFIX is a prefix of STR."
 			  (dictree-rank-function dict)))
 			((eq rank-function 'distance)
 			 (dictree--wrap-fuzzy-rankfun
-			  (trie--construct-Lewenstein-rankfun
+			  (trie--construct-fuzzy-match-rankfun
 			   (dictree-comparison-function dict))))
 			(rank-function
 			 (dictree--wrap-fuzzy-rankfun rank-function)))))
@@ -1543,7 +1543,7 @@ PREFIX is a prefix of STR."
 			  (dictree-rank-function dict)))
 			((eq rank-function 'distance)
 			 (dictree--wrap-fuzzy-rankfun
-			  (trie--construct-Lewenstein-rankfun
+			  (trie--construct-fuzzy-complete-rankfun
 			   (dictree-comparison-function dict))))
 			(rank-function
 			 (dictree--wrap-fuzzy-rankfun rank-function)))))
