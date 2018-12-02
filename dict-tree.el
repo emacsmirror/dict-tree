@@ -2952,11 +2952,11 @@ of the default key-dist-data list."
    &optional rank-function maxnum reverse filter resultfun no-cache)
   "Return completion of prefixes in DICT within Lewenstein DISTANCE
 \(edit distance\) of PREFIX along with their associated data, in
-the order defined by RANKFUN, defauling to \"lexicographic\"
-order. If REVERSE is non-nil, the matches are sorted in the
-reverse order. Returns nil if no completions are found.
+the order defined by RANKFUN, defauling to lexicographic order.
+If REVERSE is non-nil, the matches are sorted in the reverse
+order. Returns nil if no completions are found.
 
-Returns a list of completions, with elements of the form:
+Returns a list of completions with elements of the form:
 
     ((KEY DIST PFXLEN) . DATA)
 
@@ -2978,8 +2978,15 @@ DICT. If PREFIX is a string, it must be possible to apply
 `string' to individual elements of DICT keys. The KEYs returned
 in the list will be sequences of the same type as PREFIX.
 
-DISTANCE must be an integer, and specifies the maximum Lewenstein
-distance \(edit distances\) of prefixes from PREFIX.
+
+DISTANCE is a positive integer specifying the maximum Lewenstein
+distance prefixes from PREFIX. \(Note that DISTANCE=0 will not
+give meaningful results; use `trie-complete' instead.\)
+
+DISTANCE can also be a cons cell \(LENGTH . DISTANCE\) containing
+two positive integers. In this case, the first LENGTH elements of
+PREFIX must be matched exactly, and the remaining elements must
+be within the specified Lewenstain DISTANCE.
 
 
 If optional argument RANK-FUNCTION is the symbol `ranked', the
@@ -3026,17 +3033,17 @@ of the result. Ignored for dictionaries that do not have
 fuzzy-match caching enabled.
 
 
-The FILTER argument sets a filter function for the matches. If
-supplied, it is called for each possible match with two
-arguments: a (KEY DIST PFXLEN) list, and DATA. If the filter
-function returns nil, the match is not included in the results,
-and does not count towards MAXNUM.
+FILTER sets a filter function for the matches. If supplied, it is
+called for each possible match with two arguments: a
+\(KEY DIST PFXLEN\) list, and DATA. If FILTER returns nil, that
+match is not included in the results, and does not count towards
+MAXNUM.
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
-accept two arguments: a (KEY DIST PFXLEN) list, and DATA. Its
+accept two arguments: a \(KEY DIST PFXLEN\) list, and DATA. Its
 return value is what gets added to the final result list, instead
-of the default key-dist-data list."
+of the default key-dist-pfxlen-data list."
 
   ;; run fuzzy-complete query
   (dictree--query
