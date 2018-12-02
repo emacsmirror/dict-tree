@@ -2057,14 +2057,21 @@ Interactively, DICT is read from the mini-buffer."
 
 
 
-(defun dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
-  ;; Wrap SORTFUN, which sorts keys, so it can act on
-  ;; dictree--meta-stack elements.
-  (if reverse
-      `(lambda (b a) (,sortfun (car (dictree-stack-first a))
-			       (car (dictree-stack-first b))))
-    `(lambda (a b) (,sortfun (car (dictree-stack-first a))
-			     (car (dictree-stack-first b))))))
+;; Wrap SORTFUN, which sorts keys, so it can act on dictree--meta-stack
+;; elements.
+(trie--if-lexical-binding
+    (defun dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
+      (if reverse
+	  (lambda (b a) (funcall sortfun (car (dictree-stack-first a))
+				 (car (dictree-stack-first b))))
+	(lambda (a b) (funcall sortfun (car (dictree-stack-first a))
+			       (car (dictree-stack-first b))))))
+  (defun dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
+    (if reverse
+	`(lambda (b a) (,sortfun (car (dictree-stack-first a))
+				 (car (dictree-stack-first b))))
+      `(lambda (a b) (,sortfun (car (dictree-stack-first a))
+			       (car (dictree-stack-first b)))))))
 
 
 (defun dictree-stack (dict &optional type reverse)
