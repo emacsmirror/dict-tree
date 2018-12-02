@@ -2603,46 +2603,52 @@ to its constituent dicts."
   ;; AUXARGS list, if any) using TRIEFUN or STACKFUN that satisfy FILTER,
   ;; ordered according to RANKFUN (defaulting to "lexicographic" order).
 
-  ;; for a meta-dict, use a dictree-stack
-  (if (dictree--meta-dict-p dict)
-      (let ((stack (apply stackfun
-			  (append (list dict arg) auxargs (list reverse))))
-	    (heap (when rankfun
-		    (heap-create   ; heap order is inverse of rank order
-			(if reverse
-			    rankfun
-			  (lambda (a b)
-			    (not (funcall rankfun a b))))
-			(1+ maxnum))))
-	    (i 0) res results)
-	;; pop MAXNUM results from the stack
-	(while (and (or (null maxnum) (< i maxnum))
-		    (setq res (dictree--stack-pop stack)))
-	  ;; check result passes FILTER
-	  (when (or (null filter) (funcall filter res))
-	    (if rankfun
-		(heap-add heap res)   ; for ranked query, add to heap
-	      (push res results))     ; for lexicographic query, add to list
-	    (incf i)))
-	(if (null rankfun)
-	    ;; for lexicographic query, reverse and return result list (we
-	    ;; built it backwards)
-	    (nreverse results)
-	  ;; for ranked query, pass rest of results through heap
-	  (while (setq res (dictree--stack-pop stack))
-	    (heap-add heap res)
-	    (heap-delete-root heap))
-	  ;; extract results from heap
-	  (while (setq res (heap-delete-root heap))
-	    (push res results))
-	  results))  ; return result list
+  (if (dictree--p dict)
+      ;; for a normal dict, call corresponding trie function on dict's
+      ;; trie. Note: could use a dictree-stack here too - would it be more
+      ;; efficient?
+      (apply triefun
+	     (append (list (dictree--trie dict) arg) auxargs
+		     (list rankfun maxnum reverse filter)))
 
-    ;; for a normal dict, call corresponding trie function on dict's
-    ;; trie. Note: could use a dictree-stack here too - would it be more
-    ;; efficient?
-    (apply triefun
-	   (append (list (dictree--trie dict) arg) auxargs
-		   (list rankfun maxnum reverse filter)))))
+    ;; `dictree-fuzzy-complete' rankfun can be a cons cell with rankfun in cdr
+    (when (and (eq stackfun #'dictree-fuzzy-complete-stack)
+	       (eq (car-safe rankfun) t))
+	 (setq rankfun (cdr rankfun)))
+
+    ;; for a meta-dict, use a dictree-stack
+    (let ((stack (apply stackfun
+			(append (list dict arg) auxargs (list reverse))))
+	  (heap (when rankfun
+		  (heap-create   ; heap order is inverse of rank order
+		   (if reverse
+		       rankfun
+		     (lambda (a b)
+		       (not (funcall rankfun a b))))
+		   (1+ maxnum))))
+	  (i 0) res results)
+      ;; pop MAXNUM results from the stack
+      (while (and (or (null maxnum) (< i maxnum))
+		  (setq res (dictree--stack-pop stack)))
+	;; check result passes FILTER
+	(when (or (null filter) (funcall filter res))
+	  (if rankfun
+	      (heap-add heap res)   ; for ranked query, add to heap
+	    (push res results))     ; for lexicographic query, add to list
+	  (incf i)))
+      (if (null rankfun)
+	  ;; for lexicographic query, reverse and return result list (we
+	  ;; built it backwards)
+	  (nreverse results)
+	;; for ranked query, pass rest of results through heap
+	(while (setq res (dictree--stack-pop stack))
+	  (heap-add heap res)
+	  (heap-delete-root heap))
+	;; extract results from heap
+	(while (setq res (heap-delete-root heap))
+	  (push res results))
+	results))  ; return result list
+    ))
 
 
 
@@ -2927,10 +2933,17 @@ of the default key-dist-data list."
    (when rank-function
      (cond
       ((eq rank-function 'distance) t)
-      ((functionp rank-function) (dictree--wrap-fuzzy-rankfun rank-function))
       ((eq rank-function t)
        (dictree--wrap-fuzzy-rankfun
-	(dictree-rank-function (if (listp dict) (car dict) dict))))))
+	(dictree-rank-function (if (listp dict) (car dict) dict))))
+      ((and (eq (car-safe rank-function) t)
+	    (eq (cdr-safe rank-function) 'ranked))
+       (cons t (dictree--wrap-rankfun
+		(dictree-rank-function (if (listp dict) (car dict) dict)))))
+      ((eq (car-safe rank-function) t)
+       (cons t (dictree--wrap-fuzzy-rankfun (cdr rank-function))))
+      ((functionp rank-function) (dictree--wrap-fuzzy-rankfun rank-function))
+      ))
    maxnum reverse filter resultfun))
 
 
@@ -2969,11 +2982,30 @@ DISTANCE must be an integer, and specifies the maximum Lewenstein
 distance \(edit distances\) of prefixes from PREFIX.
 
 
-If optional argument RANK-FUNCTION is the symbol `distance', the
-matches are sorted by increasing Lewenstein distance of their
-prefix \(with same-distance prefixes ordered
-lexicographically\). If it is t, the matches are sorted according
-to the dictionary's rank-function (see `dictree-create').
+If optional argument RANK-FUNCTION is the symbol `ranked', the
+matches are sorted according to the dictionary's
+rank-function (see `dictree-create').
+
+If RANK-FUNCTION is t, the matches are sorted by increasing
+Lewenstein distance of their prefix, with same-distance prefixes
+ordered lexicographically.
+
+If RANK-FUNCTION is a cons cell of the form
+
+    (t . RANKFUN)
+
+then matches are again ordered by increasing Lewenstein distance
+of their prefix, but with same-distance prefixes ordered by
+RANKFUN. If RANKFUN is the symbol `ranked', same-distance
+prefixes are ordered by the dictionary's rank-function (see
+`dictree-create'). Otherwise, RANKFUN should take two arguments,
+both of the form
+
+    (KEY . DATA)
+
+where KEY is a key from the trie and DATA is its associated data.
+RANKFUN should return non-nil if first argument is ranked
+strictly higher than the second, nil otherwise.
 
 Any other non-nil value of RANK-FUNCTION should be a function
 that accepts two arguments, both of the form:
@@ -3016,10 +3048,17 @@ of the default key-dist-data list."
    (when rank-function
      (cond
       ((eq rank-function 'distance) t)
-      ((functionp rank-function) (dictree--wrap-fuzzy-rankfun rank-function))
       ((eq rank-function t)
        (dictree--wrap-fuzzy-rankfun
-	(dictree-rank-function (if (listp dict) (car dict) dict))))))
+	(dictree-rank-function (if (listp dict) (car dict) dict))))
+      ((and (eq (car-safe rank-function) t)
+	    (eq (cdr-safe rank-function) 'ranked))
+       (cons t (dictree--wrap-rankfun
+		(dictree-rank-function (if (listp dict) (car dict) dict)))))
+      ((eq (car-safe rank-function) t)
+       (cons t (dictree--wrap-fuzzy-rankfun (cdr rank-function))))
+      ((functionp rank-function) (dictree--wrap-fuzzy-rankfun rank-function))
+      ))
    maxnum reverse filter resultfun))
 
 
