@@ -1662,40 +1662,33 @@ also `dictree-member-p' for testing existence alone.)"
   (let* ((flag '(nil))
 	 (data flag)
 	 time)
-    ;; if KEY is in the cache, then we're done
-    (unless (and (dictree-lookup-cache dict)
-		 (setq data (gethash key (dictree--lookup-cache dict))))
+    ;; KEY is in cache: done
+    (if (dictree-lookup-cache dict)
+	(setq data (gethash key (dictree--lookup-cache dict)))
 
-      ;; otherwise, we have to look in the dictionary itself...
-      (cond
-       ;; if DICT is a meta-dict, look in its constituent dictionaries
-       ((dictree--meta-dict-p dict)
-	(let (newdata (newflag '(nil)))
-	  ;; time the lookup for caching
-	  (setq time (float-time))
-	  ;; look in each constituent dictionary in turn
-	  (dolist (dic (dictree--meta-dict-dictlist dict))
-	    (setq newdata (dictree--lookup dic key newflag))
-	    ;; skip dictionary if it doesn't contain KEY
-	    (unless (eq newdata newflag)
-	      ;; if we haven't found KEY before, we have now!
-	      (if (eq data flag) (setq data newdata)
-		;; otherwise, combine the previous data with the new data
-		(setq data
-		      (funcall (dictree--wrap-combfun
-				(dictree--meta-dict-combine-function dict))
-			       data newdata)))))
-	  (setq time (- (float-time) time))))
+      ;; meta-dict: look in all its constituent dictionaries
+      (if (dictree--meta-dict-p dict)
+	  (let ((newflag '(nil))
+		newdata )
+	    ;; time lookup for caching
+	    (setq time (float-time))
+	    (dolist (dic (dictree--meta-dict-dictlist dict))
+	      (setq newdata (dictree--lookup dic key newflag))
+	      (unless (eq newdata newflag)
+		(if (eq data flag) (setq data newdata)
+		  ;; combine results from multiple dictionaries
+		  (setq data
+			(funcall (dictree--wrap-combfun
+				  (dictree--meta-dict-combine-function dict))
+				 data newdata)))))
+	    (setq time (- (float-time) time)))
 
-       ;; otherwise, DICT is a normal dictionary, so look in it's trie
-       (t
-	;; time the lookup for caching
+	;; normal dict: look in it's trie, timing lookup for caching
 	(setq time (float-time))
 	(setq data (trie-member (dictree--trie dict) key flag))
-	(setq time (- (float-time) time))))
+	(setq time (- (float-time) time)))
 
-      ;; if lookup found something, and we're above the cache-threshold, cache
-      ;; the result
+      ;; found something and we're above the cache-threshold: cache result
       (when (and (not (eq data flag))
 		 (dictree--above-cache-threshold-p
 		  time (length key) (dictree-cache-policy dict)
@@ -1705,7 +1698,7 @@ also `dictree-member-p' for testing existence alone.)"
 	(dictree-create-lookup-cache dict)
 	(puthash key data (dictree-lookup-cache dict))))
 
-    ;; return the desired data
+    ;; return data
     (if (eq data flag) nilflag data)))
 
 
@@ -1724,16 +1717,15 @@ PROPERTY to VALUE in *all* its constituent dictionaries.
 
 Unlike the data associated with a key (cf. `dictree-insert'),
 properties are not included in the results of queries on the
-dictionary \(`dictree-lookup', `dictree-complete',
-`dictree-complete-ordered'\), nor do they affect the outcome of
-any of the queries. They merely serves to tag a key with some
-additional information, and can only be retrieved using
-`dictree-get-property'."
+dictionary \(`dictree-lookup', `dictree-complete', etc.\), nor do
+they affect the outcome of any of the queries. They merely serve
+to tag a key with some additional information, and can only be
+retrieved using `dictree-get-property'."
 
   ;; sort out arguments
   (and (symbolp dict) (setq dict (symbol-value dict)))
   (cond
-   ;; set PROPERTY for KEY in all constituent dicts of a meta-dict
+   ;; meta-dict: set PROPERTY for KEY in all constituent dictionaries
    ((dictree--meta-dict-p dict)
     (warn "Setting %s property for key %s in all constituent\
  dictionaries of meta-dictionary %s" property key (dictree-name dict))
@@ -1746,7 +1738,8 @@ additional information, and can only be retrieved using
 	    (dictree--meta-dict-dictlist dict))
       ;; return VALUE if KEY was found in at least one constituent dict
       dictree--put-property-ret))
-   (t  ;; set PROPERTY for KEY in normal dict
+
+   (t  ;; normal dict: set PROPERTY for KEY in DICT
     (let ((cell (trie-member (dictree--trie dict) key)))
       (when cell
 	(setf (dictree-modified dict) t)
@@ -1768,17 +1761,19 @@ still be detected by supplying the optional argument to
 
 Note that if DICT is a meta-dictionary, then this will delete
 KEY's PROPERTY in *all* its constituent dictionaries."
+
   ;; sort out arguments
   (and (symbolp dict) (setq dict (symbol-value dict)))
   (cond
-   ;; delete PROPERTY from KEY in all constituent dicts of a meta-dict
+   ;; meta-dict: delete PROPERTY from KEY in all constituent dictionaries
    ((dictree--meta-dict-p dict)
     (warn "Deleting %s property from key %s in all constituent\
  dictionaries of meta-dicttionary %s" property key (dictree-name dict))
     (setf (dictree-modified dict) t)
     (mapcar (lambda (dic k p) (dictree-delete-property dic k p))
 	    (dictree--meta-dict-dictlist dict)))
-   (t  ;; delete PROPERTY from KEY in normal dict
+
+   (t  ;; normal dict: delete PROPERTY from KEY in DICT
     (let* ((cell (trie-member (dictree--trie dict) key))
 	   plist tail)
       (when (and cell
@@ -2307,8 +2302,8 @@ Returns nil if the stack is empty."
 
 
 (defun dictree--stack-first (dictree-stack)
-  "Return the first element from DICTREE-STACK, without removing it.
-Returns nil if the stack is empty."
+  ;; Return the raw first element from DICTREE-STACK, without removing it.
+  ;; Returns nil if the stack is empty.
   (if (trie-stack-p dictree-stack)
       ;; normal dict
       (trie-stack-first dictree-stack)
@@ -2532,7 +2527,8 @@ to its constituent dicts."
 
 (defun dictree--query
     (dict triefun stackfun cachefun cachecreatefun cache-long no-cache arg
-     &optional auxargs rank-function rankfun maxnum reverse filter resultfun)
+     &optional auxargs rank-function rankfun maxnum reverse filter resultfun
+     stack-rankfun)
   ;; Return results of querying DICT with argument ARG (and AUXARGS list, if
   ;; any) using TRIEFUN or STACKFUN. If DICT's cache-threshold is non-nil,
   ;; look first for cached result in cache returned by calling CACHEFUN on
@@ -2553,54 +2549,54 @@ to its constituent dicts."
   (let ((sort-function (dictree--construct-sortfun (car dict)))
 	cache results res cache-entry)
     (dolist (dic dict)
-      (when cachefun (setq cache (funcall cachefun dic)))
-      (cond
 
-       ;; if there's a cache entry with enough results, use it
-       ((and (or (symbolp rank-function)
-		 ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
-		 (and (consp rank-function)
-		      (symbolp (car rank-function))
-		      (symbolp (cdr rank-function))))
-	     (symbolp filter)
-	     (setq cache-entry
-		   (when cache
+      ;; if there's a cache entry with enough results, use it
+      (if (and cachefun
+	       (or (symbolp rank-function)
+		   ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
+		   (and (consp rank-function)
+			(symbolp (car rank-function))
+			(symbolp (cdr rank-function))))
+	       (symbolp filter)
+	       (setq cache (funcall cachefun dic))
+	       (setq cache-entry
 		     (gethash (list arg auxargs rank-function reverse filter)
-			      cache)))
-	     (or (null (dictree--cache-maxnum cache-entry))
-		 (and maxnum
-		      (<= maxnum (dictree--cache-maxnum cache-entry)))))
-	(setq res (dictree--cache-results cache-entry))
-	;; drop any excess results
-	(when (and maxnum
-		   (or (null (dictree--cache-maxnum cache-entry))
-		       (> (dictree--cache-maxnum cache-entry) maxnum)))
-	  (setcdr (nthcdr (1- maxnum) results) nil)))
+			      cache))
+	       (or (null (dictree--cache-maxnum cache-entry))
+		   (and maxnum
+			(<= maxnum (dictree--cache-maxnum cache-entry))))
+	       (setq res (dictree--cache-results cache-entry)))
+	  ;; drop any excess results
+	  (when (and maxnum
+		     (or (null (dictree--cache-maxnum cache-entry))
+			 (> (dictree--cache-maxnum cache-entry) maxnum)))
+	    (setq res (setcdr (nthcdr (1- maxnum) res) nil))))
 
-       (t  ;; if there was nothing useful in the cache, do query and time it
-	(let ((time (float-time)))
-	  (setq res
-		(dictree--do-query
-		 dic triefun stackfun arg auxargs rankfun maxnum reverse
-		 (when filter (dictree--wrap-filter filter))))
-	  (setq time (- (float-time) time))
-	  ;; if we're above the dictionary's cache threshold, cache the result
-	  (when (and cachefun (not no-cache)
-		     (or (symbolp rank-function)
-			 ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
-			 (and (consp rank-function)
-			      (symbolp (car rank-function))
-			      (symbolp (cdr rank-function))))
-		     (symbolp filter)
-		     (dictree--above-cache-threshold-p
-		      time (length arg) (dictree-cache-policy dic)
-		      (dictree-cache-threshold dic) cache-long))
-	    (setf (dictree-modified dic) t)
-	    ;; create query cache if it doesn't already exist
-	    (funcall cachecreatefun dic)
-	    (puthash (list arg auxargs rank-function reverse filter)
-		     (dictree--cache-create res maxnum)
-		     (funcall cachefun dic))))))
+      ;; if there was nothing useful in the cache, do query and time it
+      (let ((time (float-time)))
+	(setq res
+	      (dictree--do-query
+	       dic triefun stackfun arg auxargs rankfun maxnum reverse
+	       (when filter (dictree--wrap-filter filter))
+	       stack-rankfun))
+	(setq time (- (float-time) time))
+	;; if we're above the dictionary's cache threshold, cache the result
+	(when (and cachefun (not no-cache)
+		   (or (symbolp rank-function)
+		       ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
+		       (and (consp rank-function)
+			    (symbolp (car rank-function))
+			    (symbolp (cdr rank-function))))
+		   (symbolp filter)
+		   (dictree--above-cache-threshold-p
+		    time (length arg) (dictree-cache-policy dic)
+		    (dictree-cache-threshold dic) cache-long))
+	  (setf (dictree-modified dic) t)
+	  ;; create query cache if it doesn't already exist
+	  (funcall cachecreatefun dic)
+	  (puthash (list arg auxargs rank-function reverse filter)
+		   (dictree--cache-create res maxnum)
+		   (funcall cachefun dic))))
 
       ;; merge new result into results list
       (setq results
@@ -2618,7 +2614,8 @@ to its constituent dicts."
 
 
 (defun dictree--do-query
-   (dict triefun stackfun arg &optional auxargs rankfun maxnum reverse filter)
+    (dict triefun stackfun arg &optional auxargs rankfun maxnum reverse filter
+	                                 stack-rankfun)
   ;; Return first MAXNUM results of querying DICT with argument ARG (and
   ;; AUXARGS list, if any) using TRIEFUN or STACKFUN that satisfy FILTER,
   ;; ordered according to RANKFUN (defaulting to "lexicographic" order).
@@ -2631,20 +2628,14 @@ to its constituent dicts."
 	     (append (list (dictree--trie dict) arg) auxargs
 		     (list rankfun maxnum reverse filter)))
 
-    ;; `dictree-fuzzy-complete' rankfun can be a cons cell with rankfun in cdr
-    (when (and (eq stackfun #'dictree-fuzzy-complete-stack)
-	       (eq (car-safe rankfun) t))
-	 (setq rankfun (cdr rankfun)))
-
     ;; for a meta-dict, use a dictree-stack
+    (unless stack-rankfun (setq stack-rankfun rankfun))
     (let ((stack (apply stackfun
 			(append (list dict arg) auxargs (list reverse))))
-	  (heap (when rankfun
+	  (heap (when stack-rankfun
 		  (heap-create   ; heap order is inverse of rank order
-		   (if reverse
-		       rankfun
-		     (lambda (a b)
-		       (not (funcall rankfun a b))))
+		   (if reverse stack-rankfun
+		     (lambda (a b) (not (funcall stack-rankfun a b))))
 		   (1+ maxnum))))
 	  (i 0) res results)
       ;; pop MAXNUM results from the stack
@@ -2652,18 +2643,19 @@ to its constituent dicts."
 		  (setq res (dictree--stack-pop stack)))
 	;; check result passes FILTER
 	(when (or (null filter) (funcall filter res))
-	  (if rankfun
+	  (if stack-rankfun
 	      (heap-add heap res)   ; for ranked query, add to heap
 	    (push res results))     ; for lexicographic query, add to list
 	  (incf i)))
-      (if (null rankfun)
+      (if (null stack-rankfun)
 	  ;; for lexicographic query, reverse and return result list (we
 	  ;; built it backwards)
 	  (nreverse results)
 	;; for ranked query, pass rest of results through heap
 	(while (setq res (dictree--stack-pop stack))
-	  (heap-add heap res)
-	  (heap-delete-root heap))
+	  (when (or (null filter) (funcall filter res))
+	    (heap-add heap res)
+	    (heap-delete-root heap)))
 	;; extract results from heap
 	(while (setq res (heap-delete-root heap))
 	  (push res results))
@@ -2733,10 +2725,10 @@ default key-data cons cell."
    prefix nil
    rank-function
    (when rank-function
-     (if (functionp rank-function)
-	 (dictree--wrap-rankfun rank-function)
-       (dictree--wrap-rankfun
-	(dictree--rank-function (if (listp dict) (car dict) dict)))))
+     (dictree--wrap-rankfun
+      (if (eq rank-function t)
+	  (dictree--rank-function (if (listp dict) (car dict) dict))
+	rank-function)))
    maxnum reverse filter resultfun))
 
 
@@ -2862,10 +2854,10 @@ list, instead of the default key-data cons cell."
    regexp nil
    rank-function
    (when rank-function
-     (if (functionp rank-function)
-	 (dictree--wrap-regexp-rankfun rank-function)
-       (dictree--wrap-regexp-rankfun
-	(dictree-rank-function (if (listp dict) (car dict) dict)))))
+     (dictree--wrap-regexp-rankfun
+      (if (eq rank-function t)
+	  (dictree-rank-function (if (listp dict) (car dict) dict))
+	rank-function)))
    maxnum reverse filter resultfun))
 
 
@@ -2953,18 +2945,35 @@ of the default key-dist-data list."
    (when rank-function
      (cond
       ((eq rank-function 'distance) t)
-      ((eq rank-function t)
-       (dictree--wrap-fuzzy-rankfun
-	(dictree-rank-function (if (listp dict) (car dict) dict))))
       ((and (eq (car-safe rank-function) t)
 	    (eq (cdr-safe rank-function) 'ranked))
        (cons t (dictree--wrap-rankfun
 		(dictree-rank-function (if (listp dict) (car dict) dict)))))
       ((eq (car-safe rank-function) t)
        (cons t (dictree--wrap-fuzzy-rankfun (cdr rank-function))))
-      ((functionp rank-function) (dictree--wrap-fuzzy-rankfun rank-function))
+      ((eq rank-function t)
+       (dictree--wrap-fuzzy-rankfun
+	(dictree-rank-function (if (listp dict) (car dict) dict))))
+      (t (dictree--wrap-fuzzy-rankfun rank-function))
       ))
-   maxnum reverse filter resultfun))
+   maxnum
+   reverse
+   filter
+   resultfun
+   (when rank-function
+     (cond
+      ((eq rank-function 'distance)
+       (trie--construct-fuzzy-match-rankfun
+	(dictree--comparison-function (if (listp dict) (car dict) dict))))
+      ((and (eq (car-safe rank-function) t)
+	    (eq (cdr-safe rank-function) 'ranked))
+       (trie--construct-fuzzy-match-dist-rankfun
+	(dictree--wrap-rankfun
+	 (dictree-rank-function (if (listp dict) (car dict) dict)))))
+      ((eq (car-safe rank-function) t)
+       (trie--construct-fuzzy-match-dist-rankfun
+	(dictree--wrap-rankfun (cdr rank-function))))
+      ))))
 
 
 (defun dictree-fuzzy-complete
@@ -3075,18 +3084,35 @@ of the default key-dist-pfxlen-data list."
    (when rank-function
      (cond
       ((eq rank-function 'distance) t)
-      ((eq rank-function t)
-       (dictree--wrap-fuzzy-rankfun
-	(dictree-rank-function (if (listp dict) (car dict) dict))))
       ((and (eq (car-safe rank-function) t)
 	    (eq (cdr-safe rank-function) 'ranked))
        (cons t (dictree--wrap-rankfun
 		(dictree-rank-function (if (listp dict) (car dict) dict)))))
       ((eq (car-safe rank-function) t)
        (cons t (dictree--wrap-fuzzy-rankfun (cdr rank-function))))
-      ((functionp rank-function) (dictree--wrap-fuzzy-rankfun rank-function))
+      ((eq rank-function t)
+       (dictree--wrap-fuzzy-rankfun
+	(dictree-rank-function (if (listp dict) (car dict) dict))))
+      (t (dictree--wrap-fuzzy-rankfun rank-function))
       ))
-   maxnum reverse filter resultfun))
+   maxnum
+   reverse
+   filter
+   resultfun
+   (when rank-function
+     (cond
+      ((eq rank-function 'distance)
+       (trie--construct-fuzzy-complete-rankfun
+	(dictree--comparison-function (if (listp dict) (car dict) dict))))
+      ((and (eq (car-safe rank-function) t)
+	    (eq (cdr-safe rank-function) 'ranked))
+       (trie--construct-fuzzy-complete-dist-rankfun
+	(dictree--wrap-rankfun
+	 (dictree-rank-function (if (listp dict) (car dict) dict)))))
+      ((eq (car-safe rank-function) t)
+       (trie--construct-fuzzy-complete-dist-rankfun
+	(dictree--wrap-rankfun (cdr rank-function))))
+      ))))
 
 
 
