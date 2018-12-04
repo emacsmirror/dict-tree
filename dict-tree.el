@@ -1120,7 +1120,7 @@ becomes the new association for KEY."
 	  olddata newdata)
       ;; set the dictionary's modified flag
       (setf (dictree-modified dict) t)
-      ;; insert key in dictionary's ternary search tree
+      ;; insert key in dictionary's trie
       (setq newdata
 	    (trie-insert
 	     (dictree--trie dict) key (dictree--cell-create data nil)
@@ -1659,22 +1659,19 @@ also `dictree-member-p' for testing existence alone.)"
   ;; Return association of KEY in DICT, or NILFLAG if KEY does not
   ;; exist. Does not do any data/meta-data unwrapping
 
-  (let* ((flag '(nil))
-	 (data flag)
-	 time)
+  (let* (data time (flag '(nil)))
     ;; KEY is in cache: done
-    (if (dictree-lookup-cache dict)
-	(setq data (gethash key (dictree--lookup-cache dict)))
+    (unless (and (dictree-lookup-cache dict)
+		 (setq data (gethash key (dictree--lookup-cache dict))))
 
       ;; meta-dict: look in all its constituent dictionaries
       (if (dictree--meta-dict-p dict)
-	  (let ((newflag '(nil))
-		newdata )
+	  (let (newdata)
 	    ;; time lookup for caching
 	    (setq time (float-time))
 	    (dolist (dic (dictree--meta-dict-dictlist dict))
-	      (setq newdata (dictree--lookup dic key newflag))
-	      (unless (eq newdata newflag)
+	      (setq newdata (dictree--lookup dic key flag))
+	      (unless (eq newdata flag)
 		(if (eq data flag) (setq data newdata)
 		  ;; combine results from multiple dictionaries
 		  (setq data
