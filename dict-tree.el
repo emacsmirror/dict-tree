@@ -559,6 +559,12 @@ If START or END is negative, it counts from the end."
 	(if (funcall cmpfun (car list2) (car list1))
 	    (push (pop list2) res)
 	  ;; if elements are equal, merge them for non-null COMBFUN
+	  ;; !!!!!!!!!!!!!!!!!!!!!!!!!!! FIXME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	  ;; Doesn't combine duplicate completions, combines things that
+	  ;; happen to compare equal. Depending on CMPFUN, this could combine
+	  ;; things that shouldn't be combined, or fail to combine things that
+	  ;; should be.
+	  ;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	  (if combfun
 	      (push (funcall combfun (pop list1) (pop list2))
 		    res)
