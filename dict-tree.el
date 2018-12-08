@@ -2567,33 +2567,33 @@ to its constituent dicts."
 	  (when (and maxnum
 		     (or (null (dictree--cache-maxnum cache-entry))
 			 (> (dictree--cache-maxnum cache-entry) maxnum)))
-	    (setq res (setcdr (nthcdr (1- maxnum) res) nil))))
+	    (setq res (setcdr (nthcdr (1- maxnum) res) nil)))
 
-      ;; if there was nothing useful in the cache, do query and time it
-      (let ((time (float-time)))
-	(setq res
-	      (dictree--do-query
-	       dic triefun stackfun arg auxargs rankfun maxnum reverse
-	       (when filter (dictree--wrap-filter filter))
-	       stack-rankfun))
-	(setq time (- (float-time) time))
-	;; if we're above the dictionary's cache threshold, cache the result
-	(when (and cachefun (not no-cache)
-		   (or (symbolp rank-function)
-		       ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
-		       (and (consp rank-function)
-			    (symbolp (car rank-function))
-			    (symbolp (cdr rank-function))))
-		   (symbolp filter)
-		   (dictree--above-cache-threshold-p
-		    time (length arg) (dictree-cache-policy dic)
-		    (dictree-cache-threshold dic) cache-long))
-	  (setf (dictree-modified dic) t)
-	  ;; create query cache if it doesn't already exist
-	  (funcall cachecreatefun dic)
-	  (puthash (list arg auxargs rank-function reverse filter)
-		   (dictree--cache-create res maxnum)
-		   (funcall cachefun dic))))
+	;; if there was nothing useful in the cache, do query and time it
+	(let ((time (float-time)))
+	  (setq res
+		(dictree--do-query
+		 dic triefun stackfun arg auxargs rankfun maxnum reverse
+		 (when filter (dictree--wrap-filter filter))
+		 stack-rankfun))
+	  (setq time (- (float-time) time))
+	  ;; if we're above the dictionary's cache threshold, cache the result
+	  (when (and cachefun (not no-cache)
+		     (or (symbolp rank-function)
+			 ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
+			 (and (consp rank-function)
+			      (symbolp (car rank-function))
+			      (symbolp (cdr rank-function))))
+		     (symbolp filter)
+		     (dictree--above-cache-threshold-p
+		      time (length arg) (dictree-cache-policy dic)
+		      (dictree-cache-threshold dic) cache-long))
+	    (setf (dictree-modified dic) t)
+	    ;; create query cache if it doesn't already exist
+	    (funcall cachecreatefun dic)
+	    (puthash (list arg auxargs rank-function reverse filter)
+		     (dictree--cache-create res maxnum)
+		     (funcall cachefun dic)))))
 
       ;; merge new result into results list
       (setq results
