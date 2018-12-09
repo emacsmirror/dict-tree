@@ -320,7 +320,8 @@ If START or END is negative, it counts from the end."
 	 (,sortfun a b)))))
 
 
-;; return wrapped rankfun to ignore fuzzy query distance data
+;; return wrapped rankfun to deal with data wrapping and ignore fuzzy query
+;; distance data. Note: works for both fuzzy-matching and fuzzy-completion.
 (dictree--if-lexical-binding
     (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
       (lambda (a b)
@@ -331,6 +332,34 @@ If START or END is negative, it counts from the end."
     `(lambda (a b)
        (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
 		 (cons (car b) (dictree--cell-data (cdr b)))))))
+
+
+(defun dictree--construct-fuzzy-trie-rankfun (rankfun &optional dict)
+  (cond
+   ((eq rankfun 'distance) t)
+   ((and (or (eq (car-safe rankfun) t)
+	     (eq (car-safe rankfun) 'distance))
+	 (or (eq (cdr-safe rankfun) t)
+	     (eq (cdr-safe rankfun) 'ranked)))
+    (cons t (dictree--wrap-rankfun (dictree-rank-function dict))))
+   ((or (eq (car-safe rankfun) t)
+	(eq (car-safe rankfun) 'distance))
+    (cons t (dictree--wrap-fuzzy-rankfun (cdr rankfun))))
+   ((or (eq rankfun t)
+	(eq rankfun 'ranked))
+    (dictree--wrap-fuzzy-rankfun (dictree-rank-function dict)))
+   (rankfun (dictree--wrap-fuzzy-rankfun rankfun))))
+
+(defun dictree--construct-fuzzy-match-rankfun (rankfun dict)
+  (trie--construct-fuzzy-match-rankfun
+   (dictree--construct-fuzzy-trie-rankfun rankfun dict)
+   (dictree--trie dict)))
+
+(defun dictree--construct-fuzzy-complete-rankfun (rankfun dict)
+  (trie--construct-fuzzy-complete-rankfun
+   (dictree--construct-fuzzy-trie-rankfun rankfun dict)
+   (dictree--trie dict)))
+
 
 ;; return wrapped sortfun to ignore fuzzy query distance data
 (dictree--if-lexical-binding
@@ -378,16 +407,18 @@ If START or END is negative, it counts from the end."
     `(lambda (res) (,resultfun (car res) (dictree--cell-data (cdr res))))))
 
 
-;; construct lexicographic sort function from DICT's comparison function
-(dictree--if-lexical-binding
-    (defun dictree--construct-sortfun (dict)  ; INTERNAL USE ONLY
-      (let ((sortfun (trie-construct-sortfun
-		      (dictree-comparison-function dict))))
-	(lambda (a b) (funcall sortfun (car a) (car b)))))
-    (defun dictree--construct-sortfun (dict)  ; INTERNAL USE ONLY
-      `(lambda (a b)
-	 (,(trie-construct-sortfun (dictree-comparison-function (car dict)))
-	  (car a) (car b)))))
+;; construct lexicographic sort function from DICT's comparison function.
+;; ACCESSOR is used to obtain the sort key, defaulting to `car'.
+;;(dictree--if-lexical-binding
+(defun dictree--construct-sortfun (comparison-function &optional accessor)  ; INTERNAL USE ONLY
+  (unless accessor (setq accessor #'car))
+  (let ((sortfun (trie-construct-sortfun comparison-function)))
+    (lambda (a b)
+      (funcall sortfun (funcall accessor a) (funcall accessor b)))))
+    ;; (defun dictree--construct-sortfun (dict &optional accessor)  ; INTERNAL USE ONLY
+    ;;   `(lambda (a b)
+    ;; 	 (,(trie-construct-sortfun (dictree-comparison-function dict))
+    ;; 	  (,accessor a)	(,accessor b)))))
 
 
 
@@ -541,12 +572,10 @@ If START or END is negative, it counts from the end."
     (list (dictree--trie dict))))
 
 
-(defun dictree--merge (list1 list2 cmpfun &optional combfun maxnum)
+(defun dictree--merge (list1 list2 cmpfun &optional maxnum)
   ;; Destructively merge together sorted lists LIST1 and LIST2, sorting
   ;; elements according to CMPFUN. For non-null MAXNUM, only the first
-  ;; MAXNUM are kept. For non-null COMBFUN, duplicate elements will be
-  ;; merged by passing the two elements as arguments to COMBFUN, and
-  ;; using the return value as the merged element.
+  ;; MAXNUM are kept.
   (or (listp list1) (setq list1 (append list1 nil)))
   (or (listp list2) (setq list2 (append list2 nil)))
   (let (res (i 0))
@@ -554,23 +583,9 @@ If START or END is negative, it counts from the end."
     ;; build up result list backwards
     (while (and list1 list2 (or (null maxnum) (< (incf i) maxnum)))
       ;; move smaller element to result list
-      (if (funcall cmpfun (car list1) (car list2))
-	  (push (pop list1) res)
-	(if (funcall cmpfun (car list2) (car list1))
-	    (push (pop list2) res)
-	  ;; if elements are equal, merge them for non-null COMBFUN
-	  ;; !!!!!!!!!!!!!!!!!!!!!!!!!!! FIXME !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	  ;; Doesn't combine duplicate completions, combines things that
-	  ;; happen to compare equal. Depending on CMPFUN, this could combine
-	  ;; things that shouldn't be combined, or fail to combine things that
-	  ;; should be.
-	  ;; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-	  (if combfun
-	      (push (funcall combfun (pop list1) (pop list2))
-		    res)
-	    ;; otherwise, add both to result list, in order
-	    (push (pop list1) res)
-	    (push (pop list2) res)))))
+      (if (funcall cmpfun (car list2) (car list1))
+	  (push (pop list2) res)
+	(push (pop list1) res)))
 
     ;; return result if we already have MAXNUM entries
     (if (and maxnum (= i maxnum))
@@ -602,7 +617,7 @@ If START or END is negative, it counts from the end."
 ;;     (dictree--merge
 ;;      (dictree--do-merge-sort list1 (/ len 2) sortfun combfun)
 ;;      (dictree--do-merge-sort list2 (/ len 2) sortfun combfun)
-;;      sortfun combfun)))
+;;      sortfun)))
 
 
 
@@ -1281,11 +1296,17 @@ PREFIX is a prefix of STR."
 		 (dictree-fuzzy-match-cache
 		  dictree--synchronize-fuzzy-match-cache
 		  (lambda (string dist key)
-		    (<= (Lewenstein-distance string key) dist)))
+		    (if (consp dist)
+			(<= (Lewenstein-distance (substring string (car dist)) key)
+			    (cdr dist))
+		      (<= (Lewenstein-distance string key) dist))))
 		 (dictree-fuzzy-complete-cache
-		  dictree--synchronize-fuzzy-completion-cache
+		  dictree--synchronize-fuzzy-complete-cache
 		  (lambda (prefix dist key)
-		    (<= (Lewenstein-distance prefix key) dist)))
+		    (if (consp dist)
+			(<= (Lewenstein-distance (substring prefix (car dist)) key)
+			    (cdr dist))
+		      (<= (Lewenstein-distance prefix key) dist))))
 		 ))
 	(when (funcall (nth 0 cachefuns) dict)
 	  (maphash
@@ -1346,14 +1367,7 @@ PREFIX is a prefix of STR."
 	  (setf (dictree--cache-results cache-entry)
 		(dictree--merge
 		 (list (cons key newdata)) completions
-		 (or rankfun
-		     `(lambda (a b)
-			(,(trie-construct-sortfun
-			   (dictree-comparison-function dict))
-			 (car a) (car b))))
-		 (when (dictree--meta-dict-p dict)
-		   (dictree--wrap-combfun
-		    (dictree--meta-dict-combine-function dict)))
+		 (or rankfun (dictree--construct-sortfun dict))
 		 maxnum))))
 
        ;; modified and in the cached result
@@ -1430,15 +1444,7 @@ PREFIX is a prefix of STR."
 	  (setf (dictree--cache-results cache-entry)
 		(dictree--merge
 		 (list (cons key newdata)) completions
-		 (or rankfun
-		     `(lambda (a b)
-			(,(trie-construct-sortfun
-			   (dictree-comparison-function dict))
-			 ,(if group-data '(caar a) '(car a))
-			 ,(if group-data '(caar b) '(car b)))))
-		 (when (dictree--meta-dict-p dict)
-		   (dictree--wrap-combfun
-		    (dictree--meta-dict-combine-function dict)))
+		 (or rankfun (dictree--construct-sortfun dict #'caar))
 		 maxnum))))
 
        ;; modified and in the cached result
@@ -1475,16 +1481,9 @@ PREFIX is a prefix of STR."
 	 (cmpl (catch 'found
 		 (dolist (c completions)
 		   (when (equal key (caar c)) (throw 'found c)))))
-	 (distance (Lewenstein-distance key arg))
-	 (rankfun (cond ((eq rank-function t)
-			 (dictree--wrap-fuzzy-rankfun
-			  (dictree-rank-function dict)))
-			((eq rank-function 'distance)
-			 (dictree--wrap-fuzzy-rankfun
-			  (trie--construct-fuzzy-match-rankfun
-			   (dictree-comparison-function dict))))
-			(rank-function
-			 (dictree--wrap-fuzzy-rankfun rank-function)))))
+	 (distance (Lewenstein-distance arg key))
+	 (rankfun (dictree--construct-fuzzy-match-rankfun
+		   rank-function dict)))
     ;; for meta-dict, get old data from cache instead of OLDDATA
     (when (dictree--meta-dict-p dict) (setq olddata (cdr cmpl)))
     ;; skip cache update if key/data pair doesn't pass FILTER
@@ -1509,14 +1508,7 @@ PREFIX is a prefix of STR."
 	  (setf (dictree--cache-results cache-entry)
 		(dictree--merge
 		 (list (cons (cons key distance) newdata)) completions
-		 (or rankfun
-		     `(lambda (a b)
-			(,(trie-construct-sortfun
-			   (dictree-comparison-function dict))
-			 (caar a) (caar b))))
-		 (when (dictree--meta-dict-p dict)
-		   (dictree--wrap-combfun
-		    (dictree--meta-dict-combine-function dict)))
+		 (or rankfun (dictree--construct-sortfun dict #'caar))
 		 maxnum))))
 
        ;; modified and in the cached result
@@ -1553,16 +1545,11 @@ PREFIX is a prefix of STR."
 	 (cmpl (catch 'found
 		 (dolist (c completions)
 		   (when (equal key (caar c)) (throw 'found c)))))
-	 (distance (Lewenstein-distance key arg))
-	 (rankfun (cond ((eq rank-function t)
-			 (dictree--wrap-fuzzy-rankfun
-			  (dictree-rank-function dict)))
-			((eq rank-function 'distance)
-			 (dictree--wrap-fuzzy-rankfun
-			  (trie--construct-fuzzy-complete-rankfun
-			   (dictree-comparison-function dict))))
-			(rank-function
-			 (dictree--wrap-fuzzy-rankfun rank-function)))))
+	 (distance (Lewenstein-prefix-distance arg key))
+	 (pfxlen (cdr distance))
+	 (distance (car distance))
+	 (rankfun (dictree--construct-fuzzy-complete-rankfun
+		   rank-function dict)))
     ;; for meta-dict, get old data from cache instead of OLDDATA
     (when (dictree--meta-dict-p dict) (setq olddata (cdr cmpl)))
     ;; skip cache update if key/data pair doesn't pass FILTER
@@ -1586,15 +1573,9 @@ PREFIX is a prefix of STR."
 	(when (or (null filter) (funcall filter key newdata))
 	  (setf (dictree--cache-results cache-entry)
 		(dictree--merge
-		 (list (cons key (cons distance newdata))) completions
-		 (or rankfun
-		     `(lambda (a b)
-			(,(trie-construct-sortfun
-			   (dictree-comparison-function dict))
-			 (car a) (car b))))
-		 (when (dictree--meta-dict-p dict)
-		   (dictree--wrap-combfun
-		    (dictree--meta-dict-combine-function dict)))
+		 (list (cons (list key distance pfxlen) newdata))
+		 completions
+		 (or rankfun (dictree--construct-sortfun dict #'caar))
 		 maxnum))))
 
        ;; modified and in the cached result
@@ -2549,8 +2530,7 @@ to its constituent dicts."
 
   ;; map over all dictionaries in list
   (when (dictree-p dict) (setq dict (list dict)))
-  (let ((sort-function (dictree--construct-sortfun (car dict)))
-	cache results res cache-entry)
+  (let (cache results res cache-entry)
     (dolist (dic dict)
 
       ;; if there's a cache entry with enough results, use it
@@ -2603,8 +2583,10 @@ to its constituent dicts."
 
       ;; merge new result into results list
       (setq results
-	    (dictree--merge results res (or rankfun sort-function)
-			    nil maxnum)))
+	    (dictree--merge
+	     results res
+	     (or rankfun (dictree--construct-sortfun (car dict)))
+	     maxnum)))
 
 
     ;; return results list, applying RESULTFUN if specified, otherwise just
@@ -2945,38 +2927,14 @@ of the default key-dist-data list."
    t no-cache  ; cache long STRINGs
    string (list distance)
    rank-function
-   (when rank-function
-     (cond
-      ((eq rank-function 'distance) t)
-      ((and (eq (car-safe rank-function) t)
-	    (eq (cdr-safe rank-function) 'ranked))
-       (cons t (dictree--wrap-rankfun
-		(dictree-rank-function (if (listp dict) (car dict) dict)))))
-      ((eq (car-safe rank-function) t)
-       (cons t (dictree--wrap-fuzzy-rankfun (cdr rank-function))))
-      ((eq rank-function t)
-       (dictree--wrap-fuzzy-rankfun
-	(dictree-rank-function (if (listp dict) (car dict) dict))))
-      (t (dictree--wrap-fuzzy-rankfun rank-function))
-      ))
+   (dictree--construct-fuzzy-trie-rankfun
+    rank-function (if (listp dict) (car dict) dict))
    maxnum
    reverse
    filter
    resultfun
-   (when rank-function
-     (cond
-      ((eq rank-function 'distance)
-       (trie--construct-fuzzy-match-rankfun
-	(dictree--comparison-function (if (listp dict) (car dict) dict))))
-      ((and (eq (car-safe rank-function) t)
-	    (eq (cdr-safe rank-function) 'ranked))
-       (trie--construct-fuzzy-match-dist-rankfun
-	(dictree--wrap-rankfun
-	 (dictree-rank-function (if (listp dict) (car dict) dict)))))
-      ((eq (car-safe rank-function) t)
-       (trie--construct-fuzzy-match-dist-rankfun
-	(dictree--wrap-rankfun (cdr rank-function))))
-      ))))
+   (dictree--construct-fuzzy-match-rankfun
+    rank-function  (if (listp dict) (car dict) dict))))
 
 
 (defun dictree-fuzzy-complete
@@ -3084,38 +3042,14 @@ of the default key-dist-pfxlen-data list."
    nil no-cache  ; cache short PREFIXes
    prefix (list distance)
    rank-function
-   (when rank-function
-     (cond
-      ((eq rank-function 'distance) t)
-      ((and (eq (car-safe rank-function) t)
-	    (eq (cdr-safe rank-function) 'ranked))
-       (cons t (dictree--wrap-rankfun
-		(dictree-rank-function (if (listp dict) (car dict) dict)))))
-      ((eq (car-safe rank-function) t)
-       (cons t (dictree--wrap-fuzzy-rankfun (cdr rank-function))))
-      ((eq rank-function t)
-       (dictree--wrap-fuzzy-rankfun
-	(dictree-rank-function (if (listp dict) (car dict) dict))))
-      (t (dictree--wrap-fuzzy-rankfun rank-function))
-      ))
+   (dictree--construct-fuzzy-trie-rankfun
+    rank-function (if (listp dict) (car dict) dict))
    maxnum
    reverse
    filter
    resultfun
-   (when rank-function
-     (cond
-      ((eq rank-function 'distance)
-       (trie--construct-fuzzy-complete-rankfun
-	(dictree--comparison-function (if (listp dict) (car dict) dict))))
-      ((and (eq (car-safe rank-function) t)
-	    (eq (cdr-safe rank-function) 'ranked))
-       (trie--construct-fuzzy-complete-dist-rankfun
-	(dictree--wrap-rankfun
-	 (dictree-rank-function (if (listp dict) (car dict) dict)))))
-      ((eq (car-safe rank-function) t)
-       (trie--construct-fuzzy-complete-dist-rankfun
-	(dictree--wrap-rankfun (cdr rank-function))))
-      ))))
+   (dictree--construct-fuzzy-complete-rankfun
+    rank-function (if (listp dict) (car dict) dict))))
 
 
 
@@ -3236,10 +3170,8 @@ and OVERWRITE is the prefix argument."
 	      ;; destination
 	      (unless (eq compilation 'uncompiled)
 		(if (save-window-excursion
-		      (let ((byte-compile-disable-print-circle t)
-			    err)
-			(setq err (byte-compile-file tmpfile))
-			err))
+		      (let ((byte-compile-disable-print-circle t))
+			(byte-compile-file tmpfile)))
 		    (rename-file (concat tmpfile ".elc")
 				 (concat filename ".elc") t)
 		  (error ""))))
