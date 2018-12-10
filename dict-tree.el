@@ -432,10 +432,8 @@ If START or END is negative, it counts from the end."
    (:constructor nil)
    (:constructor dictree--create
 		 (&optional
+		  name
 		  filename
-		  (name (and filename
-			     (file-name-sans-extension
-			      (file-name-nondirectory filename))))
 		  autosave
 		  _unlisted
 		  (comparison-function #'<)
@@ -450,7 +448,7 @@ If START or END is negative, it counts from the end."
 		  (trie-type 'avl)
 		  &aux
 		  (modified nil)
-		  (trie (make-trie comparison-function trie-type))
+		  (trie (trie-create comparison-function trie-type))
 		  (lookup-cache nil)
 		  (complete-cache nil)
 		  (regexp-cache nil)
@@ -460,10 +458,8 @@ If START or END is negative, it counts from the end."
 		  ))
    (:constructor dictree--create-custom
 		 (&optional
+		  name
 		  filename
-		  (name (and filename
-			     (file-name-sans-extension
-			      (file-name-nondirectory filename))))
 		  autosave
 		  _unlisted
 		  (comparison-function #'<)
@@ -521,10 +517,8 @@ If START or END is negative, it counts from the end."
    (:constructor dictree--meta-dict-create
 		 (dictionary-list
 		  &optional
+		  name
 		  filename
-		  (name (when filename
-			  (file-name-sans-extension
-			   (file-name-nondirectory filename))))
 		  autosave
 		  _unlisted
 		  (combine-function #'+)
@@ -638,24 +632,23 @@ If START or END is negative, it counts from the end."
   "Create an empty dictionary and return it.
 
 If NAME is supplied, the dictionary is stored in the variable
-NAME. Defaults to FILENAME stripped of directory and
-extension. (Regardless of the value of NAME, the dictionary will
-be stored in the default variable name when it is reloaded from
-file.)
+NAME, and saved to a file named \"NAME.el(c)\".
 
-FILENAME supplies a directory and file name to use when saving
-the dictionary. If the AUTOSAVE flag is non-nil, then the
-dictionary will automatically be saved to this file when it is
-unloaded or when exiting Emacs.
+FILENAME sets the default file name to use when saving the
+dictionary. If the AUTOSAVE flag is non-nil, then the dictionary
+will automatically be saved to this file when it is unloaded or
+when exiting Emacs. If FIlENAME is a directory, then it will be
+saved to a file called \"NAME.el(c)\" under that directory.
 
-If UNLISTED is non-nil, the dictionary will not be added to the
-list of loaded dictionaries. Note that this disables autosaving.
+If UNLISTED is non-nil, the dictionary will not be recorded in
+the list of loaded dictionaries. Note that this disables
+autosaving.
 
-COMPARE-FUNCTION sets the function used to compare elements of
+COMPARISON-FUNCTION sets the function used to compare elements of
 the keys. It should take two arguments, A and B, both of the type
 contained by the sequences used as keys \(e.g. if the keys will
 be strings, the function will be passed two characters\). It
-should return t if the first is \"less than\" the
+should return t if the first is strictly \"less than\" the
 second. Defaults to `<'.
 
 INSERT-FUNCTION sets the function used to insert data into the
@@ -736,21 +729,26 @@ loaded dictionary.
 TRIE-TYPE sets the type of trie to use as the underlying data
 structure. See `trie-create' for details."
 
+  ;; derive NAME from FILENAME or vice versa
+  (when (and (not name) filename
+	     (not (string= (setq name (file-name-nondirectory filename))
+			   "")))
+    (setq name (intern (file-name-sans-extension name))))
+  (when (and name filename
+	     (string= (file-name-directory filename) filename))
+    (setq filename (concat filename (symbol-name name))))
   ;; sadly, passing null values overrides the defaults in the defstruct
   ;; dictree--create, so we have to explicitly set the defaults again here
-  (or name (setq name (and filename (make-symbol
-				     (file-name-sans-extension
-				     (file-name-nondirectory filename))))))
-  (or comparison-function (setq comparison-function '<))
-  (or insert-function (setq insert-function (lambda (a _b) a)))
-  (or rank-function (setq rank-function (lambda (a b) (> (cdr a) (cdr b)))))
-  (or cache-policy (setq cache-policy 'time))
-  (or cache-update-policy (setq cache-update-policy 'synchronize))
-  (or trie-type (setq trie-type 'avl))
+  (unless comparison-function (setq comparison-function #'<))
+  (unless insert-function (setq insert-function (lambda (a _b) a)))
+  (unless rank-function (setq rank-function (lambda (a b) (> (cdr a) (cdr b)))))
+  (unless cache-policy (setq cache-policy 'time))
+  (unless cache-update-policy (setq cache-update-policy 'synchronize))
+  (unless trie-type (setq trie-type 'avl))
 
   (let ((dict
 	 (dictree--create
-	  filename (when name (symbol-name name)) autosave unlisted
+	  (when name (symbol-name name)) filename autosave unlisted
 	  comparison-function insert-function rank-function
 	  cache-policy cache-threshold cache-update-policy
 	  key-savefun key-loadfun
@@ -790,11 +788,16 @@ The NAME through PLIST-LOADFUN arguments are as for
 The remaining arguments control the type of trie to use as the
 underlying data structure. See `trie-create' for details."
 
-  ;; sadly, passing null values over-rides the defaults in the defstruct
-  ;; dictree--create, so we have to explicitly set the defaults again
-  ;; here
-  (or name (setq name (and filename (file-name-sans-extension
-				     (file-name-nondirectory filename)))))
+  ;; derive NAME from FILENAME or vice versa
+  (when (and (not name) filename
+	     (not (string= (setq name (file-name-nondirectory filename))
+			   "")))
+    (setq name (intern (file-name-sans-extension name))))
+  (when (and name filename
+	     (string= (file-name-directory filename) filename))
+    (setq filename (concat filename (symbol-name name))))
+  ;; sadly, passing null values overrides the defaults in the defstruct
+  ;; dictree--create, so we have to explicitly set the defaults again here
   (or comparison-function (setq comparison-function #'<))
   (or insert-function (setq insert-function (lambda (a _b) a)))
   (or rank-function (setq rank-function (lambda (a b) (< (cdr a) (cdr b)))))
@@ -803,7 +806,7 @@ underlying data structure. See `trie-create' for details."
 
   (let ((dict
 	 (dictree--create-custom
-	  filename (when name (symbol-name name)) autosave unlisted
+	  (when name (symbol-name name)) filename autosave unlisted
 	  comparison-function insert-function rank-function
 	  cache-policy cache-threshold cache-update-policy
 	  key-savefun key-loadfun
@@ -851,21 +854,25 @@ The other arguments are as for `dictree-create'. Note that
 caching is only possible if NAME is supplied, otherwise the
 CACHE-THRESHOLD argument is ignored and caching is disabled."
 
-  ;; sadly, passing null values over-rides the defaults in the defstruct
-  ;; `dictree--create', so we have to explicitly set the defaults again
-  ;; here
-  (or name (setq name (and filename
-			   (file-name-sans-extension
-			    (file-name-nondirectory filename)))))
-  (or combine-function (setq combine-function #'+))
-  (or cache-policy (setq cache-policy 'time))
-  (or cache-update-policy (setq cache-update-policy 'synchronize))
+  ;; derive NAME from FILENAME or vice versa
+  (when (and (not name) filename
+	     (not (string= (setq name (file-name-nondirectory filename))
+			   "")))
+    (setq name (intern (file-name-sans-extension name))))
+  (when (and name filename
+	     (string= (file-name-directory filename) filename))
+    (setq filename (concat filename (symbol-name name))))
+  ;; sadly, passing null values overrides the defaults in the defstruct
+  ;; `dictree--create-meta-dict', so we have to explicitly set the defaults
+  ;; again here
+  (unless combine-function (setq combine-function #'+))
+  (unless cache-policy (setq cache-policy 'time))
+  (unless cache-update-policy (setq cache-update-policy 'synchronize))
 
   (let ((dict
 	 (dictree--meta-dict-create
-	  dictionary-list filename (when name (symbol-name name))
-	  autosave unlisted
-	  combine-function
+	  dictionary-list combine-function
+	  (when name (symbol-name name)) filename autosave unlisted
 	  cache-policy (when name cache-threshold) cache-update-policy
 	 )))
     ;; store dictionary in variable NAME
@@ -1121,7 +1128,7 @@ If KEY does not already exist, this creates it. How the data is
 inserted depends on the dictionary's insertion function \(see
 `dictree-create'\).
 
-The optional INSERT-FUNCTION over-rides the dictionary's own
+The optional INSERT-FUNCTION overrides the dictionary's own
 insertion function. If KEY already exists in DICT,
 INSERT-FUNCTION is called with two arguments: the data DATA, and
 the data associated with KEY in the dictionary. Its return value
@@ -2677,7 +2684,7 @@ identical keys, use a meta-dictionary; see
 If optional argument RANK-FUNCTION is t, the completions are
 sorted according to the dictionary's rank-function (see
 `dictree-create'). Any non-nil value that *is* a function
-over-rides this. In that case, RANK-FUNCTION should accept two
+overrides this. In that case, RANK-FUNCTION should accept two
 arguments, both cons cells. The car of each contains a completion
 from DICT (of the same type as PREFIX), the cdr contains its
 associated data. The RANK-FUNCTION should return non-nil if first
@@ -3058,8 +3065,8 @@ of the default key-dist-pfxlen-data list."
 ;;                    Persistent storage
 
 (defun dictree-save (dict &optional compilation)
-  "Save dictionary DICT to its associated file.
-Use `dictree-write' to save to a different file.
+  "Save dictionary DICT to its associated directory.
+Use `dictree-write' to save to a different directory.
 
 Optional argument COMPILATION determines whether to save the
 dictionary in compiled or uncompiled form. The default is to save
@@ -3067,8 +3074,7 @@ both forms. See `dictree-write'.
 
 Interactively, DICT is read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")))
-  (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (symbol-value dict)))
+  (when (symbolp dict) (setq dict (symbol-value dict)))
 
   (let ((filename (dictree-filename dict)))
     ;; if dictionary has no associated file, prompt for one
@@ -3090,69 +3096,67 @@ Interactively, DICT is read from the mini-buffer."
 
 
 (defun dictree-write (dict &optional filename overwrite compilation)
-  "Write dictionary DICT to file FILENAME.
-Defaults to dictionary's current filename if FILENAME is not
-specified (like `dictree-save').
+  "Write dictionary DICT to the file FILENAME.
+Defaults to the file the dictionary was loaded from, if any.
+\(See also `dictree-save'.\)
+
+If FILENAME is just a directory, DICT is written to a file under
+that directory with the same name as DICT.
 
 If optional argument OVERWRITE is non-nil, no confirmation will
 be asked for before overwriting an existing file.
 
 The default is to create both compiled and uncompiled versions of
-the dictionary, with extensions .elc and .el respectively (if
-FILENAME has either of these extensions, they are stripped off
-before proceeding). The compiled version is always used in
-preference to the uncomplied version, as it loads
-faster. However, only the uncompiled version is portable between
-different Emacs versions.
+the dictionary, with extensions .elc and .el respectively. The
+compiled version is always used in preference to the uncomplied
+version, as it loads faster. However, only the uncompiled version
+is portable between different Emacs versions.
 
 If optional argument COMPILATION is the symbol `compiled', only
 the compiled version will be created, whereas if it is the symbol
 `uncompiled', only the uncompiled version will be created.
 
-Interactively, DICT and FILENAME are read from the mini-buffer,
+Interactively, DICT and DIRECTORY are read from the mini-buffer,
 and OVERWRITE is the prefix argument."
   (interactive (list (read-dict "Dictionary: ")
-		     (read-file-name "Write dictionary to file: "
-				     nil "")
+		     (read-directory-name
+		      "Write dictionary to directory: " nil "" t)
 		     current-prefix-arg))
-  (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (symbol-value dict)))
-  ;; default to DICT's current file, if any
-  (when (or (null filename)
-	    (and (called-interactively-p 'any) (string= filename "")))
+  (when (symbolp dict) (setq dict (symbol-value dict)))
+  ;; default to filename DICT was loaded from, if any
+  (cond
+   ((and (or (null filename)
+	     (and (called-interactively-p 'any) (string= filename "")))
+	 (dictree-filename dict))
     (setq filename (dictree-filename dict)))
+   ((file-directory-p filename)
+    (setq filename (concat filename (dictree-name dict)))))
+
   (if (null filename)
       (progn
 	(message "Dictionary %s NOT written" (dictree-name dict))
-	nil)  ; indicate dictionary wasn't written
+	nil)  ; return nil to indicate failure
 
-    (let (dictname buff tmpfile)
-      ;; remove any .el(c) extension from filename
-      (cond
-       ((and (> (length filename) 3)
-	     (string= (substring filename -3) ".el"))
-	(setq filename (substring filename 0 -3)))
-       ((and (> (length filename) 4)
-	     (string= (substring filename -4) ".elc"))
-	(setq filename (substring filename 0 -4))))
-      ;; create saved dictionary name from filename
-      (setq dictname (file-name-nondirectory filename))
-
+    (let ((dictname (dictree-name dict))
+	  buff tmpfile)
       (save-excursion
 	;; create a temporary file
 	(setq buff
 	      (find-file-noselect
-	       (setq tmpfile (make-temp-file dictname))))
+	       (setq tmpfile (make-temp-file (dictree-name dict)))))
 	(set-buffer buff)
+	;; byte-compiler seems to b0rk on dos line-endings in some Emacsen
+	(set-buffer-file-coding-system 'utf-8-unix)
 	;; call the appropriate write function to write the dictionary code
 	(if (dictree--meta-dict-p dict)
-	    (dictree--write-meta-dict-code dict dictname filename)
-	  (dictree--write-dict-code dict dictname filename))
+	    (dictree--write-meta-dict-code dict)
+	  (dictree--write-dict-code dict))
 	(save-buffer)
 	(kill-buffer buff))
 
       ;; prompt to overwrite if necessary
       (when (or overwrite
+		(string= filename (dictree-filename dict))
 		(and
 		 (or (eq compilation 'compiled)
 		     (not (file-exists-p (concat filename ".el"))))
@@ -3173,18 +3177,14 @@ and OVERWRITE is the prefix argument."
 		      (let ((byte-compile-disable-print-circle t))
 			(byte-compile-file tmpfile)))
 		    (rename-file (concat tmpfile ".elc")
-				 (concat filename ".elc") t)
+				 (concat filename ".elc")
+				 'overwrite)
 		  (error ""))))
 	  (error "Error writing dictionary. Dictionary %s NOT saved"
 		 dictname))
 
-	;; if writing to a different name, unload dictionary under old
-	;; name and reload it under new one
 	(setf (dictree-modified dict) nil)
-	(setf (dictree-filename dict) filename)
-	(unless (string= dictname (dictree-name dict))
-	  (dictree-unload dict)
-	  (dictree-load filename)))
+	(setf (dictree-filename dict) filename))
 
       (delete-file tmpfile)
       (message "Dictionary %s saved to %s" dictname filename)
@@ -3193,8 +3193,7 @@ and OVERWRITE is the prefix argument."
 
 
 
-(defun dictree-save-modified (&optional dict ask compilation force
-					no-fail-query)
+(defun dictree-save-modified (&optional dict ask compilation force)
   "Save all modified dictionaries that have their autosave flag set.
 Returns t if all dictionaries were successfully saved. Otherwise,
 inform the user about the dictionaries which failed to save
@@ -3214,25 +3213,24 @@ save both forms. See `dictree-write'.
 If optional argument FORCE is non-nil, save modified dictionaries
 irrespective of their autosave flag.
 
-If optional argument NO-FAIL-QUERY is non-nil, the user will not
-be queried if a dictionary fails to save properly, and the return
-value is always nil.
-
 Interactively, FORCE is the prefix argument, and the user will not be
 asked whether they wish to continue after a failed save."
   (interactive "P")
 
-  ;; sort out arguments
+  ;; sort out arguments.
+  ;; Note: We use a lazy hack in the `interactive' form, and pass FORCE
+  ;;       argument as DICT, which gets sorted out here.
   (when (and (called-interactively-p 'any) dict) (setq dict nil force t))
-  (when (dictree-p dict) (setq dict (list dict)))
+  (when (symbolp dict) (setq dict (symbol-value dict)))
+  (cond
+   ((dictree-p dict) (setq dict (list dict)))
+   ((null dict) (setq dict dictree-loaded-list)))
 
   ;; For each dictionary in list / each loaded dictionary, check if
   ;; dictionary has been modified. If so, save it if autosave is set or
   ;; FORCE is non-nil.
   (let (save-failures)
-    (dolist (dic (if (null dict)
-		     dictree-loaded-list
-		   dict))
+    (dolist (dic dict)
       (when (and (dictree-modified dic)
 		 (or force (dictree-autosave dic))
 		 (or (not ask)
@@ -3244,22 +3242,14 @@ asked whether they wish to continue after a failed save."
 	      (setf (dictree-modified dic) nil))
 	  (error (push dic save-failures)))))
 
-    ;; prompt if dictionary saving failed
-    (if save-failures
-	(if (or (called-interactively-p 'any) no-fail-query)
-	    (progn
-	      (message
-	       (concat
-		"Error: failed to save the following modified "
-		"dictionaries: "
-		(mapconcat #'dictree--name save-failures ", ")))
-	      nil)
-	  (yes-or-no-p
-	   (concat "Error: failed to save the following modified "
-		   "dictionaries: "
-		   (mapconcat #'dictree--name save-failures ", ")
-		   "; continue anyway? ")))
-      t)))
+    ;; warn if dictionary saving failed
+    (when save-failures
+	(message (concat
+		  "Error: failed to save the following modified "
+		  "dictionaries: "
+		  (mapconcat #'dictree-name save-failures ", ")))
+	nil)  ; return nil to indicate failure
+    t))  ; return t to indicate success
 
 
 ;; Add the dictree-save-modified function to the kill-emacs-hook to save
@@ -3274,49 +3264,30 @@ asked whether they wish to continue after a failed save."
 Returns the dictionary if successful, nil otherwise.
 
 Interactively, FILE is read from the mini-buffer."
-  (interactive (list (read-dict "Load dictionary: " nil nil t t)))
+  (interactive (list (read-dict "Load dictionary from file: " nil nil t)))
 
-  ;; sort out dictionary name and file name
-  (if (or (symbolp file) (dictree-p file))
-      (message "Dictionary %s already loaded" (dictree-name file))
+  ;; if we've be passed an already-loaded dictionary, just return it
+  (if (dictree-p file) file
 
     ;; load the dictionary
     (if (not (load file t))
 	;; if loading failed, throw error interactively, return nil
 	;; non-interactively
 	(if (called-interactively-p 'any)
-	    (error "Cannot open dictionary file: %s" file)
+	    (error "Cannot load dictionary file: %s" file)
 	  nil)
 
-      (let (dictname dict)
-	(setq dictname
-	      (file-name-nondirectory (file-name-sans-extension file))
-	      dict (symbol-value (intern-soft dictname)))
+      (let* ((dictname (file-name-nondirectory (file-name-sans-extension file)))
+	     (dict (symbol-value (intern-soft dictname))))
 	(if (not (dictree-p dict))
 	    ;; if loading failed, throw error interactively, return nil
 	    ;; non-interactively
 	    (if (called-interactively-p 'any)
-		(error "Error loading dictionary file: %s" file)
+		(error "Error loading dictionary from file: %s" file)
 	      nil)
-
-	  ;; ensure the dictionary name and file name associated with
-	  ;; the dictionary match the file it was loaded from
-	  (when (and (string= (file-name-nondirectory file) file)
-		     (setq file
-			   (locate-file file load-path load-suffixes)))
-	    (setf (dictree-filename dict) file))
-	  (setf (dictree-name dict) dictname)
-
-	  ;; make sure the dictionary is in dictree-loaded-list
-	  ;; (normally the lisp code in the dictionary itself should do
-	  ;; this, but just to make sure...)
-	  (unless (memq dict dictree-loaded-list)
-	    (push dict dictree-loaded-list))
+	  ;; return dictionary on sucess
 	  (message (format "Loaded dictionary %s" dictname))
-
-	  ;; return dictionary
 	  dict)))))
-
 
 
 (defun dictree-unload (dict &optional dont-save)
@@ -3328,24 +3299,21 @@ Interactively, DICT is read from the mini-buffer, and DONT-SAVE
 is the prefix argument."
   (interactive (list (read-dict "Dictionary: ")
 		     current-prefix-arg))
-  (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (symbol-value dict)))
+  (when  (symbolp dict) (setq dict (symbol-value dict)))
 
-  ;; if dictionary has been modified, autosave is set and not overidden,
-  ;; save it first
+  ;; possible save dictionary first
   (when (and (dictree-modified dict)
 	     (null dont-save)
 	     (or (eq (dictree-autosave dict) t)
 		 (and (eq (dictree-autosave dict) 'ask)
 		      (y-or-n-p
 		       (format
-			"Dictionary %s modified.\
- Save before unloading? "
+			"Dictionary %s modified. Save before unloading? "
 			(dictree-name dict))))))
     (dictree-save dict))
 
-  ;; if unloading a meta-dict, remove reference to it from constituent
-  ;; dictionaries' meta-dict-list cell
+  ;; remove references to meta-dict from constituent dictionaries'
+  ;; meta-dict-list cell
   (when (dictree--meta-dict-p dict)
     (mapc
      (lambda (dic)
@@ -3355,165 +3323,56 @@ is the prefix argument."
 
   ;; remove dictionary from list of loaded dictionaries and unload it
   (setq dictree-loaded-list (delq dict dictree-loaded-list))
-  ;; We used `unintern' here before, but that's too dangerous!
+  ;; used `unintern' here before, but that's too dangerous!
   (makunbound (intern (dictree-name dict)))
   (message "Dictionary %s unloaded" (dictree-name dict)))
 
 
+(defun dictree-revert (dict)
+  "Revert dictionary DICT to version from it associated file."
+  (interactive (list (read-dict "Dictionary to revert: ")))
 
-(defun dictree--write-dict-code (dict dictname filename)
-  ;; Write code for normal dictionary DICT to current buffer, giving it
-  ;; the name DICTNAME and file FILENAME.
-  (let (hashcode tmpdict tmptrie lookup-alist
-	complete-alist regexp-alist fuzzy-match-alist fuzzy-complete-alist)
+  (let ((filename (dictree-filename dict)))
+    (when (and (dictree-modified dict)
+	       (or (not (called-interactively-p 'any))
+		   (yes-or-no-p
+		    (format "Dictionary %s already loaded and has\
+ unsaved changes. Revert from file %s? "
+			    (dictree-name dict) filename))))
+    (dictree-unload dict 'dont-save)
+    (dictree-load filename))))
+
+
+
+(defun dictree--write-dict-code (dict)
+  ;; Write code for normal dictionary DICT to current buffer
+  (let ((dictname (dictree-name dict))
+	(tmpdict (dictree--copy dict))
+	tmptrie hashcode)
 
     ;; --- convert trie data ---
-    ;; if dictionary doesn't use any custom save functions, write
-    ;; dictionary's trie directly as is
-    (setq tmptrie (dictree--trie dict))
-    ;; otherwise, create a temporary trie and populate it with the
-    ;; converted contents of the dictionary's trie
-    (when (or (dictree--data-savefun dict)
-	      (dictree--plist-savefun dict))
-      (setq tmptrie
-	    (trie-create-custom
-	     (trie-comparison-function tmptrie)
-	     :createfun (trie--createfun tmptrie)
-	     :insertfun (trie--insertfun tmptrie)
-	     :deletefun (trie--deletefun tmptrie)
-	     :lookupfun (trie--lookupfun tmptrie)
-	     :mapfun (trie--mapfun tmptrie)
-	     :emptyfun (trie--emptyfun tmptrie)
-	     :stack-createfun (trie--stack-createfun tmptrie)
-	     :stack-popfun (trie--stack-popfun tmptrie)
-	     :stack-emptyfun (trie--stack-emptyfun tmptrie)))
-      (trie-mapc
-       (lambda (key cell)
-	 (trie-insert tmptrie key
-		      (dictree--cell-create
-		       (funcall (or (dictree--data-savefun dict)
-				    #'identity)
-				(dictree--cell-data cell))
-		       (funcall (or (dictree--plist-savefun dict)
-				    #'identity)
-				(dictree--cell-plist cell)))))
-       (dictree--trie dict))
+    ;; if dictionary uses custom save functions, create a temporary writable
+    ;; trie and generate code to convert it back to original form
+    (if (or (dictree--data-savefun dict)
+	    (dictree--plist-savefun dict))
+	(setq tmptrie (dictree--generate-writable-trie dict)
+	      hashcode (concat hashcode
+			       (dictree--generate-triecode dict)))
+      ;; otherwise, can use dictionary's trie directly
+      (setq tmptrie (dictree--trie dict)))
 
-      ;; generate code to convert contents of trie back to original form
-      (setq hashcode
-	    (concat
-	     hashcode
-	     " (trie-map\n"
-	     "  (lambda (key cell)\n"
-	     "     (dictree--cell-create\n"
-	     (if (dictree--data-loadfun dict)
-		 (concat
-		  "(funcall (dictree--data-loadfun " dictname ")\n"
-		  "         (dictree--cell-data cell))\n")
-	       "   (dictree--cell-data cell)\n")
-	     (if (dictree--plist-loadfun dict)
-		 (concat
-		  "(funcall (dictree--plist-loadfun " dictname ")\n"
-		  "         (dictree--cell-plist cell))))\n")
-	       "   (dictree--cell-plist cell)))\n")
-	     " (dictree--trie " dictname "))\n")))
-
-
-    ;; --- convert caches for writing to file ---
-    ;; hash tables have no read syntax in older Emacsen, so we convert
-    ;; them to alists for writing
+    ;; hash tables have no read syntax in older Emacsen
     (unless (featurep 'hashtable-print-readable)
-      ;; convert lookup cache hash table to alist, if it exists
-      (when (dictree--lookup-cache dict)
-	(maphash
-	 (lambda (key val)
-	   (push
-	    (cons key
-		  (cons (mapcar #'car (dictree--cache-results val))
-			(dictree--cache-maxnum val)))
-	    lookup-alist))
-	 (dictree--lookup-cache dict))
-	;; generate code to reconstruct the lookup hash table
-	(setq hashcode
-	      (concat
-	       hashcode
-	       "(let ((lookup-cache (make-hash-table :test #'equal))\n"
-	       "      (trie (dictree--trie " dictname ")))\n"
-	       "  (mapc\n"
-	       "   (lambda (entry)\n"
-	       "     (puthash\n"
-	       "      (car entry)\n"
-	       "      (dictree--cache-create\n"
-	       "       (mapcar\n"
-	       "        (lambda (key)\n"
-	       "          (cons key (trie-member trie key)))\n"
-	       "        (dictree--cache-results (cdr entry)))\n"
-	       "       (dictree--cache-maxnum (cdr entry)))\n"
-	       "      lookup-cache))\n"
-	       "   (dictree--lookup-cache " dictname "))\n"
-	       "  (setf (dictree--lookup-cache " dictname ")\n"
-	       "        lookup-cache))\n")))
+      (setq hashcode
+	    (concat hashcode
+		    (dictree--generate-dict-hashcode dict tmpdict))))
 
-      ;; convert query caches, if they exist
-      (dolist (cache-details
-	       '((dictree--complete-cache complete-alist)
-		 (dictree--regexp-cache regexp-alist)
-		 (dictree--fuzzy-match-cache fuzzy-match-alist)
-		 (dictree--fuzzy-complete-cache fuzzy-complete-alist)))
-	(when (funcall (nth 0 cache-details) dict)
-	  ;; convert hash table to alist
-	  (set (nth 1 cache-details)
-	       (let (alist)
-		 (maphash
-		  (lambda (key val)
-		    (push
-		     (cons key
-			   (cons
-			    (mapcar #'car (dictree--cache-results val))
-			    (dictree--cache-maxnum val)))
-		     alist))
-		(funcall (nth 0 cache-details) dict))
-		 alist))
-	  ;; generate code to reconstruct hash table from alist
-	  (setq
-	   hashcode
-	   (concat
-	    hashcode
-	    "(let ((cache (make-hash-table :test #'equal))\n"
-	    "      (trie (dictree--trie " dictname ")))\n"
-	    "  (mapc\n"
-	    "   (lambda (entry)\n"
-	    "     (puthash\n"
-	    "      (car entry)\n"
-	    "      (dictree--cache-create\n"
-	    "       (mapcar\n"
-	    "        (lambda (key)\n"
-	    "          (cons key\n"
-	    "                (trie-member\n"
-	    "                 trie (if (stringp key) key (car key)))))\n"
-	    "        (dictree--cache-results (cdr entry)))\n"
-	    "       (dictree--cache-maxnum (cdr entry)))\n"
-	    "      cache))\n"
-	    "   (" (symbol-name (nth 0 cache-details)) " " dictname "))\n"
-	    "  (setf (" (symbol-name (nth 0 cache-details)) " "
-	    dictname ")\n"
-	    "        cache))\n")))))
-
-
-    ;; --- write to file ---
     ;; generate the structure to save
-    (setq tmpdict (dictree--copy dict))
     (setf (dictree--trie tmpdict) tmptrie
 	  (dictree--name tmpdict) dictname
-	  (dictree--filename tmpdict) filename
+	  (dictree--filename tmpdict) nil
 	  (dictree--modified tmpdict) nil
 	  (dictree--meta-dict-list tmpdict) nil)
-    (unless (featurep 'hashtable-print-readable)
-      (setf (dictree--lookup-cache tmpdict)         lookup-alist
-	    (dictree--complete-cache tmpdict)       complete-alist
-	    (dictree--regexp-cache tmpdict)         regexp-alist
-	    (dictree--fuzzy-match-cache tmpdict)    fuzzy-match-alist
-	    (dictree--fuzzy-complete-cache tmpdict) fuzzy-complete-alist))
 
     ;; write lisp code that generates the dictionary object
     (let ((print-circle t) (print-level nil) (print-length nil))
@@ -3524,97 +3383,42 @@ is the prefix argument."
 	  (progn
 	    ;; transform trie to print form
 	    (trie-transform-for-print (dictree--trie tmpdict))
-	    (insert "(setq " dictname
-		    " '" (prin1-to-string tmpdict) ")\n"))
+	    (insert "(setq " dictname " '")
+	    (prin1 tmpdict (current-buffer))
+	    (insert ")\n"))
 	;; if dictionary doesn't use any custom save functions, tmpdict's trie
 	;; is identical to original dict, so transform it back to usable form
-	;; on write error
 	(unless (or (dictree--data-savefun dict)
 		    (dictree--plist-savefun dict))
 	  (trie-transform-from-read (dictree--trie tmpdict))))
-      (insert "(trie-transform-from-read (dictree--trie "
-	      dictname "))\n")
+      (insert "(trie-transform-from-read (dictree--trie " dictname "))\n"
+ 	      "(setf (dictree--filename " dictname ")\n"
+	      "      (file-name-sans-extension load-file-name))\n")
       (when hashcode (insert hashcode))
       (insert "(unless (memq " dictname " dictree-loaded-list)\n"
 	      "  (push " dictname " dictree-loaded-list))\n"))))
 
 
-
-(defun dictree--write-meta-dict-code (dict dictname filename)
+(defun dictree--write-meta-dict-code (dict)
   ;; Write code for meta-dictionary DICT to current buffer, giving it
   ;; the name DICTNAME and file FILENAME.
-  (let (hashcode tmpdict lookup-alist
-	complete-alist regexp-alist fuzzy-match-alist fuzzy-complete-alist)
+  (let ((dictname (dictree-name dict))
+	(tmpdict (dictree--meta-dict-copy dict))
+	hashcode)
 
-    ;; --- convert caches for writing to file ---
-    ;; hash tables have no read syntax in older Emacsen, so we convert
-    ;; them to alists for writing
+    ;; hash tables have no read syntax in older Emacsen
     (unless (featurep 'hashtable-print-readable)
-      ;; convert lookup cache hash table to an alist, if it exists
-      (when (dictree--meta-dict-lookup-cache dict)
-	(maphash (lambda (key val)
-		   (push (cons key (mapcar #'car val)) lookup-alist))
-		 (dictree--meta-dict-lookup-cache dict))
-	;; generate code to reconstruct the lookup hash table
-	(setq hashcode
-	      (concat
-	       hashcode
-	       "(let ((cache (make-hash-table :test #'equal)))\n"
-	       "  (mapc (lambda (entry)\n"
-	       "    (puthash (car entry) (cdr entry) cache))\n"
-	       "    (dictree--meta-dict-lookup-cache " dictname "))\n"
-	       "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
-	       "        cache))\n")))
+      (setq hashcode
+	    (dictree--generate-meta-dict-hashcode dict tmpdict)))
 
-      ;; convert query caches, if they exist
-      (dolist (cache-details
-	       '((dictree--meta-dict-complete-cache       complete-alist)
-		 (dictree--meta-dict-regexp-cache         regexp-alist)
-		 (dictree--meta-dict-fuzzy-match-cache    fuzzy-match-alist)
-		 (dictree--meta-dict-fuzzy-complete-cache fuzzy-complete-alist)))
-	(when (funcall (nth 0 cache-details) dict)
-	  ;; convert hash table to alist
-	  (set (nth 1 cache-details)
-	       (let (alist)
-		 (maphash (lambda (key val) (push (cons key val) alist))
-			  (funcall (nth 0 cache-details) dict))
-		 alist))
-	  ;; generate code to reconstruct hash table from alist
-	  (setq
-	   hashcode
-	   (concat
-	    hashcode
-	    "(let ((cache (make-hash-table :test #'equal)))\n"
-	    "  (mapc (lambda (entry)\n"
-	    "    (puthash (car entry) (cdr entry) cache))\n"
-	    "    (" (symbol-name (nth 0 cache-details)) " "
-	            dictname "))\n"
-	    "  (setf (" (symbol-name (nth 0 cache-details)) " "
-	                dictname ")\n"
-	    "        cache))\n")))))
-
-
-    ;; --- write to file ---
     ;; generate the structure to save
-    (setq tmpdict (dictree--meta-dict-copy dict))
     (setf (dictree--meta-dict-name tmpdict) dictname
-	  (dictree--meta-dict-filename tmpdict) filename
+	  (dictree--meta-dict-filename tmpdict) nil
 	  (dictree--meta-dict-modified tmpdict) nil
 	  (dictree--meta-dict-meta-dict-list tmpdict) nil
 	  (dictree--meta-dict-dictlist tmpdict)
 	    (mapcar (lambda (dic) (intern (dictree-name dic)))
 		    (dictree--meta-dict-dictlist dict)))
-    (unless (featurep 'hashtable-print-readable)
-      (setf (dictree--meta-dict-lookup-cache tmpdict)
-	      lookup-alist
-	    (dictree--meta-dict-complete-cache tmpdict)
-	      complete-alist
-	    (dictree--meta-dict-regexp-cache tmpdict)
-	      regexp-alist
-	    (dictree--meta-dict-fuzzy-match-cache tmpdict)
-	      fuzzy-match-alist
-	    (dictree--meta-dict-fuzzy-complete-cache tmpdict)
-	      fuzzy-complete-alist))
 
     ;; write lisp code that generates the dictionary object
     (let ((print-circle t) (print-level nil) (print-length nil))
@@ -3623,18 +3427,219 @@ is the prefix argument."
       (mapc
        (lambda (dic)
 	 (insert "(unless (dictree-load \"" (dictree-filename dic) "\")\n"
-		 "        (error \"Failed to load dictionary \\\""
-		 (dictree-name dic) "\\\" required by meta-dict \\\""
-		 dictname "\\\"\"))\n"))
+		 "        (error \"Failed to load dictionary "
+		                  (dictree-name dic)
+		                  " required by meta-dict "
+		                  dictname "\"))\n"))
        (dictree--meta-dict-dictlist dict))
       (insert "(defvar " dictname " nil \"Dictionary " dictname ".\")\n"
-	      "(setq " dictname " " (prin1-to-string tmpdict) ")\n"
+	      "(setq " dictname " '")
+      (prin1 tmpdict (current-buffer))
+      (insert ")\n"
+ 	      "(setf (dictree--filename " dictname ")\n"
+	      "      (file-name-sans-extension load-file-name))\n"
 	      "(setf (dictree--meta-dict-dictlist " dictname ")\n"
-	      "      (mapcar #'eval (dictree--meta-dict-dictlist "
-	                            dictname ")))\n")
+	      "      (mapcar #'symbol-value (dictree--meta-dict-dictlist "
+	                                     dictname ")))\n")
       (when hashcode (insert hashcode))
       (insert "(unless (memq " dictname " dictree-loaded-list)"
 	      " (push " dictname " dictree-loaded-list))\n"))))
+
+
+
+(defun dictree--generate-writable-trie (dict)
+  ;; generate writable version of DICT's trie using DICT's data and plist save
+  ;; functions
+  (let ((trie
+	 (trie-create-custom
+	  (trie-comparison-function (dictree--trie dict))
+	  :createfun (trie--createfun (dictree--trie dict))
+	  :insertfun (trie--insertfun (dictree--trie dict))
+	  :deletefun (trie--deletefun (dictree--trie dict))
+	  :lookupfun (trie--lookupfun (dictree--trie dict))
+	  :mapfun (trie--mapfun (dictree--trie dict))
+	  :emptyfun (trie--emptyfun (dictree--trie dict))
+	  :stack-createfun (trie--stack-createfun (dictree--trie dict))
+	  :stack-popfun (trie--stack-popfun (dictree--trie dict))
+	  :stack-emptyfun (trie--stack-emptyfun (dictree--trie dict)))))
+    (trie-mapc
+     (lambda (key cell)
+       (trie-insert trie key
+		    (dictree--cell-create
+		     (funcall (or (dictree--data-savefun dict)
+				  #'identity)
+			      (dictree--cell-data cell))
+		     (funcall (or (dictree--plist-savefun dict)
+				  #'identity)
+			      (dictree--cell-plist cell)))))
+     (dictree--trie dict))
+    trie))
+
+
+(defun dictree--generate-triecode (dict)
+  ;; generate code to convert writable trie back to original form using DICT's
+  ;; data and plist load functions
+  (let ((dictname (dictree-name dict)))
+    (concat
+     " (trie-map\n"
+     "  (lambda (key cell)\n"
+     "    (dictree--cell-create\n"
+     (if (dictree--data-loadfun dict)
+	 (concat
+	  "(funcall (dictree--data-loadfun " dictname ")\n"
+	  "         (dictree--cell-data cell))\n")
+       "   (dictree--cell-data cell)\n")
+     (if (dictree--plist-loadfun dict)
+	 (concat
+	  "(funcall (dictree--plist-loadfun " dictname ")\n"
+	  "         (dictree--cell-plist cell))))\n")
+       "   (dictree--cell-plist cell)))\n")
+     "  (dictree--trie " dictname "))\n")))
+
+
+(defun dictree--generate-dict-hashcode (dict tmpdict)
+  ;; convert DICT's hash tables to alists stored in TMPDICT, and return code
+  ;; to convert these back
+  (let ((dictname (dictree-name dict))
+	hashcode lookup-alist complete-alist regexp-alist
+	fuzzy-match-alist fuzzy-complete-alist)
+
+    ;; convert lookup cache hash table to alist, if it exists
+    (when (dictree--lookup-cache dict)
+      (maphash
+       (lambda (key val)
+	 (push
+	  (cons key
+		(cons (mapcar #'car (dictree--cache-results val))
+		      (dictree--cache-maxnum val)))
+	  lookup-alist))
+       (dictree--lookup-cache dict))
+      ;; generate code to reconstruct the lookup hash table
+      (setq hashcode
+	    (concat
+	     hashcode
+	     "(let ((lookup-cache (make-hash-table :test #'equal))\n"
+	     "      (trie (dictree--trie " dictname ")))\n"
+	     "  (mapc\n"
+	     "   (lambda (entry)\n"
+	     "     (puthash\n"
+	     "      (car entry)\n"
+	     "      (dictree--cache-create\n"
+	     "       (mapcar\n"
+	     "        (lambda (key)\n"
+	     "          (cons key (trie-member trie key)))\n"
+	     "        (dictree--cache-results (cdr entry)))\n"
+	     "       (dictree--cache-maxnum (cdr entry)))\n"
+	     "      lookup-cache))\n"
+	     "   (dictree--lookup-cache " dictname "))\n"
+	     "  (setf (dictree--lookup-cache " dictname ")\n"
+	     "        lookup-cache))\n")))
+
+    ;; convert query caches, if they exist
+    (dolist (cache-details
+	     '((dictree--complete-cache complete-alist)
+	       (dictree--regexp-cache regexp-alist)
+	       (dictree--fuzzy-match-cache fuzzy-match-alist)
+	       (dictree--fuzzy-complete-cache fuzzy-complete-alist)))
+      (when (funcall (nth 0 cache-details) dict)
+	;; convert hash table to alist
+	(set (nth 1 cache-details)
+	     (let (alist)
+	       (maphash
+		(lambda (key val)
+		  (push
+		   (cons key
+			 (cons
+			  (mapcar #'car (dictree--cache-results val))
+			  (dictree--cache-maxnum val)))
+		   alist))
+		(funcall (nth 0 cache-details) dict))
+	       alist))
+	;; generate code to reconstruct hash table from alist
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((cache (make-hash-table :test #'equal))\n"
+	       "      (trie (dictree--trie " dictname ")))\n"
+	       "  (mapc\n"
+	       "   (lambda (entry)\n"
+	       "     (puthash\n"
+	       "      (car entry)\n"
+	       "      (dictree--cache-create\n"
+	       "       (mapcar\n"
+	       "        (lambda (key)\n"
+	       "          (cons key\n"
+	       "                (trie-member\n"
+	       "                 trie (if (stringp key) key (car key)))))\n"
+	       "        (dictree--cache-results (cdr entry)))\n"
+	       "       (dictree--cache-maxnum (cdr entry)))\n"
+	       "      cache))\n"
+	       "   (" (symbol-name (nth 0 cache-details)) " " dictname "))\n"
+	       "  (setf (" (symbol-name (nth 0 cache-details)) " " dictname ")\n"
+	       "        cache))\n"))))
+
+    ;; replace TMPDICT's caches with alists
+    (setf (dictree--lookup-cache tmpdict)         lookup-alist
+	  (dictree--complete-cache tmpdict)       complete-alist
+	  (dictree--regexp-cache tmpdict)         regexp-alist
+	  (dictree--fuzzy-match-cache tmpdict)    fuzzy-match-alist
+	  (dictree--fuzzy-complete-cache tmpdict) fuzzy-complete-alist)
+    ;; return generated conversion code
+    hashcode))
+
+
+(defun dictree--generate-meta-dict-hashcode (dict tmpdict)
+  ;; hash tables have no read syntax in older Emacsen, so we convert
+  ;; the dictionary caches to alists for writing
+  (let ((dictname (dictree-name dict))
+	hashcode lookup-alist complete-alist regexp-alist
+	fuzzy-match-alist fuzzy-complete-alist)
+    (when (dictree--meta-dict-lookup-cache dict)
+      (maphash (lambda (key val)
+		 (push (cons key (mapcar #'car val)) lookup-alist))
+	       (dictree--meta-dict-lookup-cache dict))
+      ;; generate code to reconstruct the lookup hash table
+      (setq hashcode
+	    (concat
+	     hashcode
+	     "(let ((cache (make-hash-table :test #'equal)))\n"
+	     "  (mapc (lambda (entry)\n"
+	     "    (puthash (car entry) (cdr entry) cache))\n"
+	     "    (dictree--meta-dict-lookup-cache " dictname "))\n"
+	     "  (setf (dictree--meta-dict-lookup-cache " dictname ")\n"
+	     "        cache))\n")))
+
+    ;; convert query caches, if they exist
+    (dolist (cache-details
+	     '((dictree--meta-dict-complete-cache       complete-alist)
+	       (dictree--meta-dict-regexp-cache         regexp-alist)
+	       (dictree--meta-dict-fuzzy-match-cache    fuzzy-match-alist)
+	       (dictree--meta-dict-fuzzy-complete-cache fuzzy-complete-alist)))
+      (when (funcall (nth 0 cache-details) dict)
+	;; convert hash table to alist
+	(set (nth 1 cache-details)
+	     (let (alist)
+	       (maphash (lambda (key val) (push (cons key val) alist))
+			(funcall (nth 0 cache-details) dict))
+	       alist))
+	;; generate code to reconstruct hash table from alist
+	(setq hashcode
+	      (concat
+	       hashcode
+	       "(let ((cache (make-hash-table :test #'equal)))\n"
+	       "  (mapc (lambda (entry)\n"
+	       "    (puthash (car entry) (cdr entry) cache))\n"
+	       "    (" (symbol-name (nth 0 cache-details)) " " dictname "))\n"
+	       "  (setf (" (symbol-name (nth 0 cache-details)) " " dictname ")\n"
+	       "        cache))\n"))))
+
+    ;; replace TMPDICT's caches with alists
+    (setf (dictree--lookup-cache tmpdict)         lookup-alist
+	  (dictree--complete-cache tmpdict)       complete-alist
+	  (dictree--regexp-cache tmpdict)         regexp-alist
+	  (dictree--fuzzy-match-cache tmpdict)    fuzzy-match-alist
+	  (dictree--fuzzy-complete-cache tmpdict) fuzzy-complete-alist)
+    hashcode))
 
 
 
@@ -3675,9 +3680,7 @@ are created when using a trie that is not self-balancing, see
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to populate from: "
 				     nil "" t)))
-  (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (symbol-value dict)))
-
+  (when (symbolp dict) (setq dict (symbol-value dict)))
   (if (and (called-interactively-p 'any) (string= file ""))
       (message "No file specified; dictionary %s NOT populated"
 	       (dictree-name dict))
@@ -3813,15 +3816,13 @@ Note that if the data does not have a read syntax, the dumped
 data can not be used to recreate the dictionary using
 `dictree-populate-from-file'.
 
-Interactively, DICT and BUFFER are read from the mini-buffer,
-TYPE is always `string'."
+Interactively, DICT and BUFFER are read from the mini-buffer."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-buffer
 		      "Buffer to dump to (defaults to current): "
 		      (buffer-name (current-buffer)))
-		     'string))
-  (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (symbol-value dict)))
+		     'vector))
+  (when (symbolp dict) (setq dict (symbol-value dict)))
 
   ;; select the buffer, creating it if necessary
   (if buffer
@@ -3862,7 +3863,7 @@ TYPE is always `string'."
 	 (insert " " (prin1-to-string plist)))
        (insert "\n")
        (setq count (1+ count)))
-     dict type)  ; dictree-mapc target
+     dict type)  ; dictree--mapc target
 
     (message "Dumping keys from %s to %s...done"
 	     (dictree-name dict) (buffer-name buffer)))
@@ -3888,8 +3889,7 @@ Interactively, DICT and FILE are read from the mini-buffer,
 OVERWRITE is the prefix argument, and TYPE is always string."
   (interactive (list (read-dict "Dictionary: ")
 		     (read-file-name "File to dump to: " nil "")))
-  (when (and (called-interactively-p 'any) (symbolp dict))
-    (setq dict (symbol-value dict)))
+  (when (symbolp dict) (setq dict (symbol-value dict)))
 
   (if (and (called-interactively-p 'any) (string= filename ""))
       (message "Dictionary %s NOT dumped" (dictree-name dict))
