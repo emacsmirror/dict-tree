@@ -90,6 +90,7 @@
 ;;; Code:
 
 (eval-when-compile (require 'cl))
+(require 'cl-lib)
 (require 'trie)
 (require 'tNFA)
 
@@ -1240,6 +1241,15 @@ PREFIX is a prefix of STR."
 		   (equal pfx (dictree--subseq str 0 len)))
 	  (throw 'is-prefix t))))))
 
+(defun dictree--filter-prefix (prefix pfxfilter)
+  "Return non-nil if all prefixes of PREFIX pass PFXFILTER.
+Otherwise, return nil."
+  (catch 'failed
+    (dotimes (i (length prefix))
+      (unless (funcall pfxfilter (cl-subseq prefix 0 i))
+	(throw 'failed nil)))
+    t))
+
 
 (defun dictree--above-cache-threshold-p
   (time length policy threshold &optional cache-long-keys)
@@ -1296,10 +1306,10 @@ PREFIX is a prefix of STR."
 		  dictree--prefix-p)
 		 (dictree-regexp-cache
 		  dictree--synchronize-regexp-cache
-		  (lambda (arg key)
+		  (lambda (regexp key)
 		    (tNFA-regexp-match
-		     arg key :test (trie--construct-equality-function
-				    (dictree--comparison-function dict)))))
+		     regexp key :test (trie--construct-equality-function
+				       (dictree--comparison-function dict)))))
 		 (dictree-fuzzy-match-cache
 		  dictree--synchronize-fuzzy-match-cache
 		  (lambda (string dist key)
@@ -1318,30 +1328,30 @@ PREFIX is a prefix of STR."
 	(when (funcall (nth 0 cachefuns) dict)
 	  (maphash
 	   (lambda (cache-key cache-entry)
-	     (destructuring-bind
-		 (arg auxargs rank-function reverse filter) cache-key
-	       (when (apply (nth 2 cachefuns)
-			    (append (list arg) auxargs (list key)))
+	     (destructuring-bind (args rank-function reverse filter pfxfilter)
+		 cache-key
+	       (when (apply (nth 2 cachefuns) (append args (list key)))
 		 (cond
 		  ;; updating dirty cache entries
 		  ((eq (dictree-cache-update-policy dict) 'synchronize)
 		   (funcall (nth 1 cachefuns)
-			    dict key olddata newdata deleted cache-entry
-			    arg auxargs rank-function reverse filter))
+			    dict key olddata newdata deleted cache-entry args
+			    :reverse reverse :rank-function rank-function
+			    :filter filter :pfxfilter pfxfilter))
 		  ;; deleting dirty cache entries
-		  (t (remhash (list arg auxargs rank-function reverse filter)
+		  (t (remhash (list args rank-function reverse filter pfxfilter)
 			      (funcall (nth 0 cachefuns) dict)))))))
 	   (funcall (nth 0 cachefuns) dict)))
 	))))
 
 
 
-(defun dictree--synchronize-completion-cache
-    (dict key olddata newdata deleted cache-entry
-	  arg auxargs rank-function reverse filter)
-  ;; Synchronize DICT's completion CACHE-ENTRY for a query with arguments ARG,
-  ;; AUXARGS, RANK-FUNCTION, REVERSE and FILTER, where KEY's data was either
-  ;; updated from OLDDATA to NEWDATA or DELETED,
+(defun* dictree--synchronize-completion-cache
+    (dict key olddata newdata deleted cache-entry args
+	  &key reverse rank-function filter pfxfilter)
+  ;; Synchronize DICT's completion CACHE-ENTRY for a query with arguments
+  ;; ARGS, RANK-FUNCTION, REVERSE, FILTER and PFXFILTER, where KEY's data was
+  ;; either updated from OLDDATA to NEWDATA or DELETED,
 
   (let* ((completions (dictree--cache-results cache-entry))
 	 (maxnum (dictree--cache-maxnum cache-entry))
@@ -1354,18 +1364,24 @@ PREFIX is a prefix of STR."
     ;; for meta-dict, get old data from cache instead of OLDDATA
     (when (dictree--meta-dict-p dict) (setq olddata (cdr cmpl)))
     ;; skip cache update if key/data pair doesn't pass FILTER
-    (when (or (null filter)
-	      (funcall filter key olddata)
-	      (funcall filter key newdata))
+    (when (and (or (null filter)
+		   (funcall filter key olddata)
+		   (funcall filter key newdata))
+	       (or (null pfxfilter)
+		   (dictree--filter-prefix (cl-subseq key (length (car args)))
+					   pfxfilter)))
       ;; if key was...
       (cond
 
        ;; deleted and in cached result: remove cache entry and re-run the
        ;; same completion to update the cache
        ((and deleted cmpl)
-	(remhash (list arg auxargs rank-function reverse filter)
+	(remhash (list args rank-function reverse filter pfxfilter)
 		 (dictree-complete-cache dict))
-	(dictree-complete dict arg rank-function maxnum reverse filter))
+	(dictree-complete dict (car args)
+			  :maxnum maxnum :reverse reverse
+			  :rank-function rank-function
+			  :filter filter :pfxfilter pfxfilter))
 
        ;; modified and not in cached result: merge it into the completion
        ;; list, retaining only the first maxnum
@@ -1390,19 +1406,22 @@ PREFIX is a prefix of STR."
 			     (sort completions rankfun))
 		       (equal key (car (last (dictree--cache-results
 					      cache-entry))))))
-	  (remhash (list arg auxargs rank-function reverse filter)
+	  (remhash (list args rank-function reverse filter pfxfilter)
 		   (dictree-complete-cache dict))
-	  (dictree-complete dict arg rank-function maxnum reverse filter)))
+	  (dictree-complete dict (car args)
+			    :maxnum maxnum :reverse reverse
+			    :rank-function rank-function
+			    :filter filter :pfxfilter pfxfilter)))
 
        ;; deleted and not in cached result: requires no action
        ))))
 
 
-(defun dictree--synchronize-regexp-cache
-    (dict key olddata newdata deleted cache-entry
-	  arg auxargs rank-function reverse filter)
-  ;; Synchronize DICT's regexp CACHE-ENTRY for a query with arguments ARG,
-  ;; AUXARGS, RANK-FUNCTION, REVERSE and FILTER, where KEY's data was either
+(defun* dictree--synchronize-regexp-cache
+    (dict key olddata newdata deleted cache-entry args
+	  &key reverse rank-function filter pfxfilter)
+  ;; Synchronize DICT's regexp CACHE-ENTRY for a query with arguments ARGS
+  ;; RANK-FUNCTION, REVERSE, FILTER and PFXFILTER, where KEY's data was either
   ;; updated from OLDDATA to NEWDATA or DELETED,
 
   (let* ((completions (dictree--cache-results cache-entry))
@@ -1424,18 +1443,23 @@ PREFIX is a prefix of STR."
     ;; for meta-dict, get old data from cache instead of OLDDATA
     (when (dictree--meta-dict-p dict) (setq olddata (cdr cmpl)))
     ;; skip cache update if key/data pair doesn't pass FILTER
-    (when (or (null filter)
-	      (funcall filter key olddata)
-	      (funcall filter key newdata))
+    (when (and (or (null filter)
+		   (funcall filter key olddata)
+		   (funcall filter key newdata))
+	       (or (null pfxfilter)
+		   (dictree--filter-prefix key pfxfilter)))
       ;; if key was...
       (cond
 
        ;; deleted and in cached result: remove cache entry and re-run the
        ;; same completion to update the cache
        ((and deleted cmpl)
-	(remhash (list arg auxargs rank-function reverse filter)
+	(remhash (list args rank-function reverse filter pfxfilter)
 		 (dictree-regexp-cache dict))
-	(dictree-regexp-search dict arg rank-function maxnum reverse filter))
+	(dictree-regexp-search dict (car args)
+			       :maxnum maxnum :reverse reverse
+			       :rank-function rank-function
+			       :filter filter :pfxfilter pfxfilter))
 
        ;; modified and not in cached result: merge it into the completion
        ;; list, retaining only the first maxnum
@@ -1443,7 +1467,7 @@ PREFIX is a prefix of STR."
 	(when (or (null filter) (funcall filter key newdata))
 	  (save-match-data
 	    (set-match-data nil)
-	    (tNFA-regexp-match arg key
+	    (tNFA-regexp-match (car args) key
 			       :test (trie--construct-equality-function
 				      (dictree--comparison-function dict)))
 	    (when (setq group-data (nthcdr 2 (match-data)))
@@ -1467,20 +1491,22 @@ PREFIX is a prefix of STR."
 			     (sort completions rankfun))
 		       (equal key (car (last (dictree--cache-results
 					      cache-entry))))))
-	  (remhash (list arg auxargs rank-function reverse filter)
+	  (remhash (list args rank-function reverse filter pfxfilter)
 		   (dictree-regexp-cache dict))
-	  (dictree-regexp-search dict arg rank-function maxnum reverse filter)
-	  ))
+	  (dictree-regexp-search dict (car args)
+				 :maxnum maxnum :reverse reverse
+				 :rank-function rank-function
+				 :filter filter :pfxfilter pfxfilter)))
 
        ;; deleted and not in cached result: requires no action
        ))))
 
 
-(defun dictree--synchronize-fuzzy-match-cache
-    (dict key olddata newdata deleted cache-entry
-	  arg auxargs rank-function reverse filter)
+(defun* dictree--synchronize-fuzzy-match-cache
+    (dict key olddata newdata deleted cache-entry args
+	  &key reverse rank-function filter pfxfilter)
   ;; Synchronize DICT's fuzzy match CACHE-ENTRY for a query with arguments
-  ;; ARG, AUXARGS, RANK-FUNCTION, REVERSE and FILTER, where KEY's data was
+  ;; ARGS, RANK-FUNCTION, REVERSE, FILTER and PFXFILTER, where KEY's data was
   ;; either updated from OLDDATA to NEWDATA or DELETED,
 
   (let* ((completions (dictree--cache-results cache-entry))
@@ -1488,25 +1514,29 @@ PREFIX is a prefix of STR."
 	 (cmpl (catch 'found
 		 (dolist (c completions)
 		   (when (equal key (caar c)) (throw 'found c)))))
-	 (distance (Lewenstein-distance arg key))
+	 (distance (Lewenstein-distance (car args) key))
 	 (rankfun (dictree--construct-fuzzy-match-rankfun
 		   rank-function dict)))
     ;; for meta-dict, get old data from cache instead of OLDDATA
     (when (dictree--meta-dict-p dict) (setq olddata (cdr cmpl)))
     ;; skip cache update if key/data pair doesn't pass FILTER
-    (when (or (null filter)
-	      (funcall filter key olddata)
-	      (funcall filter key newdata))
+    (when (and (or (null filter)
+		   (funcall filter key olddata)
+		   (funcall filter key newdata))
+	       (or (null pfxfilter)
+		   (dictree--filter-prefix key pfxfilter)))
       ;; if key was...
       (cond
 
        ;; deleted and in cached result: remove cache entry and re-run the
        ;; same completion to update the cache
        ((and deleted cmpl)
-	(remhash (list arg auxargs rank-function reverse filter)
+	(remhash (list args rank-function reverse filter pfxfilter)
 		 (dictree-fuzzy-match-cache dict))
-	(dictree-fuzzy-match dict arg (car auxargs)
-			     rank-function maxnum reverse filter))
+	(dictree-fuzzy-match dict (car args) (nth 1 args)
+			     :maxnum maxnum :reverse reverse
+			     :rank-function rank-function
+			     :filter filter :pfxfilter pfxfilter))
 
        ;; modified and not in cached result: merge it into the completion
        ;; list, retaining only the first maxnum
@@ -1531,18 +1561,20 @@ PREFIX is a prefix of STR."
 			     (sort completions rankfun))
 		       (equal key (car (last (dictree--cache-results
 					      cache-entry))))))
-	  (remhash (list arg auxargs rank-function reverse filter)
+	  (remhash (list args rank-function reverse filter pfxfilter)
 		   (dictree-fuzzy-match-cache dict))
-	  (dictree-fuzzy-match dict arg (car auxargs)
-			       rank-function maxnum reverse filter)))
+	  (dictree-fuzzy-match dict (car args) (nth 1 args)
+			       :maxnum maxnum :reverse reverse
+			       :rank-function rank-function
+			       :filter filter :pfxfilter pfxfilter)))
 
        ;; deleted and not in cached result: requires no action
        ))))
 
 
-(defun dictree--synchronize-fuzzy-complete-cache
-    (dict key olddata newdata deleted cache-entry
-	  arg auxargs rank-function reverse filter)
+(defun* dictree--synchronize-fuzzy-complete-cache
+    (dict key olddata newdata deleted cache-entry args
+	  &key rank-function reverse filter pfxfilter)
   ;; Synchronize DICT's fuzzy completion CACHE-ENTRY for a query with
   ;; arguments ARG, AUXARGS, RANK-FUNCTION, REVERSE and FILTER, where KEY's
   ;; data was either updated from OLDDATA to NEWDATA or DELETED,
@@ -1552,7 +1584,7 @@ PREFIX is a prefix of STR."
 	 (cmpl (catch 'found
 		 (dolist (c completions)
 		   (when (equal key (caar c)) (throw 'found c)))))
-	 (distance (Lewenstein-prefix-distance arg key))
+	 (distance (Lewenstein-prefix-distance (car args) key))
 	 (pfxlen (cdr distance))
 	 (distance (car distance))
 	 (rankfun (dictree--construct-fuzzy-complete-rankfun
@@ -1560,19 +1592,23 @@ PREFIX is a prefix of STR."
     ;; for meta-dict, get old data from cache instead of OLDDATA
     (when (dictree--meta-dict-p dict) (setq olddata (cdr cmpl)))
     ;; skip cache update if key/data pair doesn't pass FILTER
-    (when (or (null filter)
-	      (funcall filter key olddata)
-	      (funcall filter key newdata))
+    (when (and (or (null filter)
+		   (funcall filter key olddata)
+		   (funcall filter key newdata))
+	       (or (null pfxfilter)
+		   (dictree--filter-prefix key pfxfilter)))
       ;; if key was...
       (cond
 
        ;; deleted and in cached result: remove cache entry and re-run the
        ;; same completion to update the cache
        ((and deleted cmpl)
-	(remhash (list arg auxargs rank-function reverse filter)
+	(remhash (list args rank-function reverse filter pfxfilter)
 		 (dictree-fuzzy-complete-cache dict))
-	(dictree-fuzzy-complete dict arg (car auxargs)
-				rank-function maxnum reverse filter))
+	(dictree-fuzzy-complete dict (car args) (nth 1 args)
+				:maxnum maxnum :reverse reverse
+				:rank-function rank-function
+				:filter filter :pfxfilter pfxfilter))
 
        ;; modified and not in cached result: merge it into the completion
        ;; list, retaining only the first maxnum
@@ -1598,10 +1634,12 @@ PREFIX is a prefix of STR."
 			     (sort completions rankfun))
 		       (equal key (car (last (dictree--cache-results
 					      cache-entry))))))
-	  (remhash (list arg auxargs rank-function reverse filter)
+	  (remhash (list args rank-function reverse filter pfxfilter)
 		   (dictree-fuzzy-complete-cache dict))
-	  (dictree-fuzzy-complete dict arg (car auxargs)
-				  rank-function maxnum reverse filter)))
+	  (dictree-fuzzy-complete dict (car args) (nth 1 args)
+				  :maxnum maxnum :reverse reverse
+				  :rank-function rank-function
+				  :filter filter :pfxfilter pfxfilter)))
 
        ;; deleted and not in cached result: requires no action
        ))))
@@ -2070,7 +2108,7 @@ Interactively, DICT is read from the mini-buffer."
 			       (car (dictree-stack-first b)))))))
 
 
-(defun dictree-stack (dict &optional type reverse)
+(defun* dictree-stack (dict &key type reverse pfxfilter)
   "Create an object that allows DICT to be accessed as a stack.
 
 The stack is sorted in \"lexicographic\" order, i.e. the order
@@ -2093,11 +2131,13 @@ cases where mapping functions `dictree-mapc', `dictree-mapcar' or
 `dictree-mapf' would be sufficient, it is better to use one of
 those instead."
   (if (dictree--meta-dict-p dict)
-      (dictree--meta-stack-create dict type reverse)
-    (trie-stack (dictree--trie dict) type reverse)))
+      (dictree--meta-stack-create
+       dict :type type :reverse reverse :pfxfilter pfxfilter)
+    (trie-stack (dictree--trie dict)
+		:type type :reverse reverse :pfxfilter pfxfilter)))
 
 
-(defun dictree-complete-stack (dict prefix &optional reverse)
+(defun* dictree-complete-stack (dict prefix &key reverse pfxfilter)
   "Return an object that allows completions of PREFIX to be accessed
 as if they were a stack.
 
@@ -2125,11 +2165,13 @@ in implementing efficient algorithms on dict-trees. However, in
 cases where `dictree-complete' is sufficient, it is better to use
 that instead."
   (if (dictree--meta-dict-p dict)
-      (dictree--complete-meta-stack-create dict prefix reverse)
-    (trie-complete-stack (dictree--trie dict) prefix reverse)))
+      (dictree--complete-meta-stack-create
+       dict prefix :reverse reverse :pfxfilter pfxfilter)
+    (trie-complete-stack (dictree--trie dict) prefix
+			 :reverse reverse :pfxfilter pfxfilter)))
 
 
-(defun dictree-regexp-stack (dict regexp &optional reverse)
+(defun* dictree-regexp-stack (dict regexp &key reverse pfxfilter)
   "Return an object that allows REGEXP matches to be accessed
 as if they were a stack.
 
@@ -2169,11 +2211,14 @@ in implementing efficient algorithms on dict-trees. However, in
 cases where `dictree-regexp-search' is sufficient, it is better
 to use that instead."
   (if (dictree--meta-dict-p dict)
-      (dictree--regexp-meta-stack-create dict regexp reverse)
-    (trie-regexp-stack (dictree--trie dict) regexp reverse)))
+      (dictree--regexp-meta-stack-create
+       dict regexp :reverse reverse :pfxfilter pfxfilter)
+    (trie-regexp-stack (dictree--trie dict) regexp
+		       :reverse reverse :pfxfilter pfxfilter)))
 
 
-(defun dictree-fuzzy-match-stack (dict string distance &optional reverse)
+(defun* dictree-fuzzy-match-stack (dict string distance
+					&key reverse pfxfilter)
   "Return an object that allows fuzzy matches to be accessed
 as if they were a stack.
 
@@ -2202,11 +2247,14 @@ they can be useful in implementing efficient algorithms on
 dict-trees. However, in cases where `dictree-fuzzy-match' is
 sufficient, it is better to use that instead."
   (if (dictree--meta-dict-p dict)
-      (dictree--fuzzy-match-meta-stack-create dict string distance reverse)
-    (trie-fuzzy-match-stack (dictree--trie dict) string distance reverse)))
+      (dictree--fuzzy-match-meta-stack-create
+       dict string distance :reverse reverse :pfxfilter pfxfilter)
+    (trie-fuzzy-match-stack (dictree--trie dict) string distance
+			    :reverse reverse :pfxfilter pfxfilter)))
 
 
-(defun dictree-fuzzy-complete-stack (dict prefix distance &optional reverse)
+(defun* dictree-fuzzy-complete-stack (dict prefix distance
+					   &key reverse pfxfilter)
   "Return an object that allows fuzzy completions to be accessed
 as if they were a stack.
 
@@ -2236,8 +2284,10 @@ they can be useful in implementing efficient algorithms on
 dict-trees. However, in cases where `dictree-fuzzy-complete' is
 sufficient, it is better to use that instead."
   (if (dictree--meta-dict-p dict)
-      (dictree--fuzzy-complete-meta-stack-create dict prefix distance reverse)
-    (trie-fuzzy-complete-stack (dictree--trie dict) prefix distance reverse)))
+      (dictree--fuzzy-complete-meta-stack-create
+       dict prefix distance :reverse reverse :pfxfilter pfxfilter)
+    (trie-fuzzy-complete-stack (dictree--trie dict) prefix distance
+			       :reverse reverse :pfxfilter pfxfilter)))
 
 
 (defun dictree-stack-pop (dictree-stack)
@@ -2365,7 +2415,7 @@ Returns nil if the stack is empty."
 ;; generators in terms of dictree-stacks.
 
 (heap--when-generators
- (iter-defun dictree-iter (dict &optional type reverse)
+ (cl-iter-defun dictree-iter (dict &key type reverse pfxfilter)
    "Return a dictree iterator object.
 
 Calling `iter-next' on this object will retrieve the next
@@ -2382,13 +2432,15 @@ iterators created from DICT before the modification (in
 particular, calling `iter-next' will give unpredictable
 results). If DICT is a meta-dict, this includes any modifications
 to its constituent dicts."
-   (let ((stack (dictree-stack dict type reverse)))
+   (let ((stack (dictree-stack dict :type type :reverse reverse
+			       :pfxfilter pfxfilter)))
      (while (not (dictree-stack-empty-p stack))
        (iter-yield (dictree-stack-pop stack))))))
 
 
 (heap--when-generators
- (iter-defun dictree-complete-iter (dict prefix &optional reverse)
+ (cl-iter-defun dictree-complete-iter (dict prefix
+					    &key reverse pfxfilter)
    "Return an iterator object for completions of PREFIX in DICT.
 
 Calling `iter-next' on this object will retrieve the next
@@ -2416,7 +2468,8 @@ to its constituent dicts."
 
 
 (heap--when-generators
- (iter-defun dictree-regexp-iter (dict regexp &optional reverse)
+ (cl-iter-defun dictree-regexp-iter (dict regexp
+					  &key reverse pfxfilter)
    "Return an iterator object for REGEXP matches in DICT.
 
 Calling `iter-next' on this object will retrieve the next match
@@ -2449,12 +2502,15 @@ iterators created from DICT before the modification (in
 particular, calling `iter-next' will give unpredictable
 results). If DICT is a meta-dict, this includes any modifications
 to its constituent dicts."
-   (let ((stack (dictree-regexp-stack dict regexp reverse)))
+   (let ((stack (dictree-regexp-stack dict regexp
+				      :reverse reverse
+				      :pfxfilter pfxfilter)))
      (while (not (dictree-stack-empty-p stack))
        (iter-yield (dictree-stack-pop stack))))))
 
 (heap--when-generators
- (iter-defun dictree-fuzzy-match-iter (dict string distance &optional reverse)
+ (cl-iter-defun dictree-fuzzy-match-iter (dict string distance
+					       &key reverse pfxfilter)
    "Return an iterator object for fuzzy matches to STRING in DICT.
 
 Calling `iter-next' on this object will retrieve the next match
@@ -2476,13 +2532,16 @@ iterators created from DICT before the modification (in
 particular, calling `iter-next' will give unpredictable
 results). If DICT is a meta-dict, this includes any modifications
 to its constituent dicts."
-   (let ((stack (dictree-fuzzy-match-stack dict string distance reverse)))
+   (let ((stack (dictree-fuzzy-match-stack dict string distance
+					   :reverse reverse
+					   :pfxfilter pfxfilter)))
      (while (not (dictree-stack-empty-p stack))
        (iter-yield (dictree-stack-pop stack))))))
 
 
 (heap--when-generators
- (iter-defun dictree-fuzzy-complete-iter (dict prefix distance &optional reverse)
+ (cl-iter-defun dictree-fuzzy-complete-iter (dict prefix distance
+						  &key reverse pfxfilter)
    "Return an iterator object for fuzzy completions of PREFIX in DICT.
 
 Calling `iter-next' on this object will retrieve the next fuzzy
@@ -2506,7 +2565,9 @@ iterators created from DICT before the modification (in
 particular, calling `iter-next' will give unpredictable
 results). If DICT is a meta-dict, this includes any modifications
 to its constituent dicts."
-   (let ((stack (dictree-fuzzy-complete-stack dict prefix distance reverse)))
+   (let ((stack (dictree-fuzzy-complete-stack dict prefix distance
+					      :reverse reverse
+					      :pfxfilter pfxfilter)))
      (while (not (dictree-stack-empty-p stack))
        (iter-yield (dictree-stack-pop stack))))))
 
@@ -2516,10 +2577,10 @@ to its constituent dicts."
 ;; ----------------------------------------------------------------
 ;;             Functions for building advanced queries
 
-(defun dictree--query
-    (dict triefun stackfun cachefun cachecreatefun cache-long no-cache arg
-     &optional auxargs rank-function rankfun maxnum reverse filter resultfun
-     stack-rankfun)
+(defun* dictree--query
+    (dict triefun stackfun cachefun cachecreatefun cache-long no-cache args
+	  &key maxnum reverse rank-function rankfun stack-rankfun
+	  filter pfxfilter resultfun)
   ;; Return results of querying DICT with argument ARG (and AUXARGS list, if
   ;; any) using TRIEFUN or STACKFUN. If DICT's cache-threshold is non-nil,
   ;; look first for cached result in cache returned by calling CACHEFUN on
@@ -2548,9 +2609,10 @@ to its constituent dicts."
 			(symbolp (car rank-function))
 			(symbolp (cdr rank-function))))
 	       (symbolp filter)
+	       (symbolp pfxfilter)
 	       (setq cache (funcall cachefun dic))
 	       (setq cache-entry
-		     (gethash (list arg auxargs rank-function reverse filter)
+		     (gethash (list args rank-function reverse filter pfxfilter)
 			      cache))
 	       (or (null (dictree--cache-maxnum cache-entry))
 		   (and maxnum
@@ -2560,14 +2622,14 @@ to its constituent dicts."
 	  (when (and maxnum
 		     (or (null (dictree--cache-maxnum cache-entry))
 			 (> (dictree--cache-maxnum cache-entry) maxnum)))
-	    (setq res (setcdr (nthcdr (1- maxnum) res) nil)))
+	    (setq res (cl-subseq res 0 maxnum)))
 
 	;; if there was nothing useful in the cache, do query and time it
 	(let ((time (float-time)))
 	  (setq res
 		(dictree--do-query
-		 dic triefun stackfun arg auxargs rankfun maxnum reverse
-		 (when filter (dictree--wrap-filter filter))
+		 dic triefun stackfun args rankfun maxnum reverse
+		 (when filter (dictree--wrap-filter filter)) pfxfilter
 		 stack-rankfun))
 	  (setq time (- (float-time) time))
 	  ;; if we're above the dictionary's cache threshold, cache the result
@@ -2578,13 +2640,14 @@ to its constituent dicts."
 			      (symbolp (car rank-function))
 			      (symbolp (cdr rank-function))))
 		     (symbolp filter)
+		     (symbolp pfxfilter)
 		     (dictree--above-cache-threshold-p
-		      time (length arg) (dictree-cache-policy dic)
+		      time (length (car args)) (dictree-cache-policy dic)
 		      (dictree-cache-threshold dic) cache-long))
 	    (setf (dictree-modified dic) t)
 	    ;; create query cache if it doesn't already exist
 	    (funcall cachecreatefun dic)
-	    (puthash (list arg auxargs rank-function reverse filter)
+	    (puthash (list args rank-function reverse filter pfxfilter)
 		     (dictree--cache-create res maxnum)
 		     (funcall cachefun dic)))))
 
@@ -2606,8 +2669,8 @@ to its constituent dicts."
 
 
 (defun dictree--do-query
-    (dict triefun stackfun arg &optional auxargs rankfun maxnum reverse filter
-	                                 stack-rankfun)
+    (dict triefun stackfun args
+	  &optional rankfun maxnum reverse filter pfxfilter stack-rankfun)
   ;; Return first MAXNUM results of querying DICT with argument ARG (and
   ;; AUXARGS list, if any) using TRIEFUN or STACKFUN that satisfy FILTER,
   ;; ordered according to RANKFUN (defaulting to "lexicographic" order).
@@ -2617,13 +2680,17 @@ to its constituent dicts."
       ;; trie. Note: could use a dictree-stack here too - would it be more
       ;; efficient?
       (apply triefun
-	     (append (list (dictree--trie dict) arg) auxargs
-		     (list rankfun maxnum reverse filter)))
+	     (append (list (dictree--trie dict)) args
+		     (list :maxnum maxnum :reverse reverse
+			   :rankfun rankfun
+			   :filter filter :pfxfilter pfxfilter)))
 
     ;; for a meta-dict, use a dictree-stack
     (unless stack-rankfun (setq stack-rankfun rankfun))
     (let ((stack (apply stackfun
-			(append (list dict arg) auxargs (list reverse))))
+			(append (list dict) args
+				(list :reverse reverse
+				      :pfxfilter pfxfilter))))
 	  (heap (when stack-rankfun
 		  (heap-create   ; heap order is inverse of rank order
 		   (if reverse stack-rankfun
@@ -2660,9 +2727,10 @@ to its constituent dicts."
 ;; ----------------------------------------------------------------
 ;;                        Completing
 
-(defun dictree-complete
-  (dict prefix
-   &optional rank-function maxnum reverse filter resultfun no-cache)
+(defun* dictree-complete
+    (dict prefix
+	  &key maxnum reverse rank-function filter pfxfilter
+	  resultfun no-cache)
   "Return an alist containing all completions of PREFIX in DICT
 along with their associated data, sorted according to
 RANK-FUNCTION (defaulting to \"lexicographic\" order, i.e. the
@@ -2714,14 +2782,18 @@ default key-data cons cell."
    dict #'trie-complete #'dictree-complete-stack
    #'dictree-complete-cache #'dictree-create-complete-cache
    nil no-cache  ; cache short PREFIXes
-   prefix nil
-   rank-function
-   (when rank-function
-     (dictree--wrap-rankfun
-      (if (eq rank-function t)
-	  (dictree--rank-function (if (listp dict) (car dict) dict))
-	rank-function)))
-   maxnum reverse filter resultfun))
+   (list prefix)
+   :rank-function rank-function
+   :maxnum maxnum
+   :reverse reverse
+   :rankfun (when rank-function
+	      (dictree--wrap-rankfun
+	       (if (eq rank-function t)
+		   (dictree--rank-function (if (listp dict) (car dict) dict))
+		 rank-function)))
+   :filter filter
+   :pfxfilter pfxfilter
+   :resultfun resultfun))
 
 
 (defun dictree-collection-function (dict string predicate all)
@@ -2735,8 +2807,9 @@ following as the COLLECTION argument of any of those functions:
 Note that PREDICATE will be called with two arguments: the
 completion, and its associated data."
   (let ((completions
-	 (dictree-complete dict string nil nil nil predicate
-			   (lambda (key _data) key))))
+	 (dictree-complete dict string
+			   :filter predicate
+			   :resultfun (lambda (key _data) key))))
     (if all completions (try-completion "" completions))))
 
 
@@ -2745,9 +2818,9 @@ completion, and its associated data."
 ;; ----------------------------------------------------------------
 ;;                      Regexp search
 
-(defun dictree-regexp-search
-  (dict regexp
-   &optional rank-function maxnum reverse filter resultfun no-cache)
+(defun* dictree-regexp-search
+    (dict regexp &key maxnum reverse rank-function
+	  filter pfxfilter resultfun no-cache)
   "Return an alist containing all matches for REGEXP in DICT
 along with their associated data, in the order defined by
 RANKFUN, defauling to \"lexicographic\" order. If REVERSE is
@@ -2843,14 +2916,18 @@ list, instead of the default key-data cons cell."
        nil  ; cache short REGEXP if it ends in .*
      t)     ; cache long REGEXPs otherwise
    no-cache
-   regexp nil
-   rank-function
-   (when rank-function
-     (dictree--wrap-regexp-rankfun
-      (if (eq rank-function t)
-	  (dictree-rank-function (if (listp dict) (car dict) dict))
-	rank-function)))
-   maxnum reverse filter resultfun))
+   (list regexp)
+   :maxnum maxnum
+   :reverse reverse
+   :rank-function rank-function
+   :rankfun (when rank-function
+	      (dictree--wrap-regexp-rankfun
+	       (if (eq rank-function t)
+		   (dictree-rank-function (if (listp dict) (car dict) dict))
+		 rank-function)))
+   :filter filter
+   :pfxfilter pfxfilter
+   :resultfun resultfun))
 
 
 
@@ -2858,9 +2935,9 @@ list, instead of the default key-data cons cell."
 ;; ----------------------------------------------------------------
 ;;                      Fuzzy queries
 
-(defun dictree-fuzzy-match
-  (dict string distance
-   &optional rank-function maxnum reverse filter resultfun no-cache)
+(defun* dictree-fuzzy-match
+    (dict string distance &key maxnum reverse rank-function
+	  filter pfxfilter resultfun no-cache)
   "Return matches for STRING in DICT within Lewenstein DISTANCE
 \(edit distance\) of STRING along with their associated data, in
 the order defined by RANKFUN, defauling to \"lexicographic\"
@@ -2932,21 +3009,23 @@ of the default key-dist-data list."
    dict #'trie-fuzzy-match #'dictree-fuzzy-match-stack
    #'dictree-fuzzy-match-cache #'dictree-create-fuzzy-match-cache
    t no-cache  ; cache long STRINGs
-   string (list distance)
-   rank-function
-   (dictree--construct-fuzzy-trie-rankfun
-    rank-function (if (listp dict) (car dict) dict))
-   maxnum
-   reverse
-   filter
-   resultfun
-   (dictree--construct-fuzzy-match-rankfun
-    rank-function  (if (listp dict) (car dict) dict))))
+   (list string distance)
+   :maxnum maxnum
+   :reverse reverse
+   :rank-function rank-function
+   :rankfun (dictree--construct-fuzzy-trie-rankfun
+	     rank-function (if (listp dict) (car dict) dict))
+   :stack-rankfun (dictree--construct-fuzzy-match-rankfun
+		   rank-function  (if (listp dict) (car dict) dict))
+   :filter filter
+   :pfxfilter pfxfilter
+   :resultfun resultfun))
 
 
-(defun dictree-fuzzy-complete
-  (dict prefix distance
-   &optional rank-function maxnum reverse filter resultfun no-cache)
+(defun* dictree-fuzzy-complete
+    (dict prefix distance
+	  &key maxnum reverse rank-function
+	  filter pfxfilter resultfun no-cache)
   "Return completion of prefixes in DICT within Lewenstein DISTANCE
 \(edit distance\) of PREFIX along with their associated data, in
 the order defined by RANKFUN, defauling to lexicographic order.
@@ -3048,15 +3127,16 @@ of the default key-dist-pfxlen-data list."
    #'dictree-fuzzy-complete-cache #'dictree-create-fuzzy-complete-cache
    nil no-cache  ; cache short PREFIXes
    prefix (list distance)
-   rank-function
-   (dictree--construct-fuzzy-trie-rankfun
-    rank-function (if (listp dict) (car dict) dict))
-   maxnum
-   reverse
-   filter
-   resultfun
-   (dictree--construct-fuzzy-complete-rankfun
-    rank-function (if (listp dict) (car dict) dict))))
+   :maxnum maxnum
+   :reverse reverse
+   :rank-function rank-function
+   :rankfun (dictree--construct-fuzzy-trie-rankfun
+	     rank-function (if (listp dict) (car dict) dict))
+   :stack-rankfun (dictree--construct-fuzzy-complete-rankfun
+		   rank-function (if (listp dict) (car dict) dict))
+   :filter filter
+   :pfxfilter pfxfilter
+   :resultfun resultfun))
 
 
 
@@ -3647,10 +3727,10 @@ is the prefix argument."
 ;; ----------------------------------------------------------------
 ;;                Dumping and restoring contents
 
-(defun dictree-populate-from-file
-  (dict file
-   &optional insert-function key-loadfun data-loadfun plist-loadfun
-   balance)
+(defun* dictree-populate-from-file
+    (dict file
+	  &key insert-function key-loadfun data-loadfun plist-loadfun
+	  balance)
   "Populate dictionary DICT from the key list in file FILE.
 
 Each line of FILE should contain a key, either a string
