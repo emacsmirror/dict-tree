@@ -2603,13 +2603,13 @@ to its constituent dicts."
 
       ;; if there's a cache entry with enough results, use it
       (if (and cachefun
-	       (or (symbolp rank-function)
-		   ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
-		   (and (consp rank-function)
-			(symbolp (car rank-function))
-			(symbolp (cdr rank-function))))
-	       (symbolp filter)
-	       (symbolp pfxfilter)
+	       ;; (or (symbolp rank-function)
+	       ;; 	   ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
+	       ;; 	   (and (consp rank-function)
+	       ;; 		(symbolp (car rank-function))
+	       ;; 		(symbolp (cdr rank-function))))
+	       ;; (symbolp filter)
+	       ;; (symbolp pfxfilter)
 	       (setq cache (funcall cachefun dic))
 	       (setq cache-entry
 		     (gethash (list args rank-function reverse filter pfxfilter)
@@ -2634,13 +2634,13 @@ to its constituent dicts."
 	  (setq time (- (float-time) time))
 	  ;; if we're above the dictionary's cache threshold, cache the result
 	  (when (and cachefun (not no-cache)
-		     (or (symbolp rank-function)
-			 ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
-			 (and (consp rank-function)
-			      (symbolp (car rank-function))
-			      (symbolp (cdr rank-function))))
-		     (symbolp filter)
-		     (symbolp pfxfilter)
+		     ;; (or (symbolp rank-function)
+		     ;; 	 ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
+		     ;; 	 (and (consp rank-function)
+		     ;; 	      (symbolp (car rank-function))
+		     ;; 	      (symbolp (cdr rank-function))))
+		     ;; (symbolp filter)
+		     ;; (symbolp pfxfilter)
 		     (dictree--above-cache-threshold-p
 		      time (length (car args)) (dictree-cache-policy dic)
 		      (dictree-cache-threshold dic) cache-long))
