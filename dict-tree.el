@@ -3199,8 +3199,8 @@ the compiled version will be created, whereas if it is the symbol
 Interactively, DICT and DIRECTORY are read from the mini-buffer,
 and OVERWRITE is the prefix argument."
   (interactive (list (read-dict "Dictionary: ")
-		     (read-directory-name
-		      "Write dictionary to directory: " nil "" t)
+		     (read-file-name
+		      "Write dictionary to file/directory: " nil "")
 		     current-prefix-arg))
   (when (symbolp dict) (setq dict (symbol-value dict)))
   ;; default to filename DICT was loaded from, if any
@@ -3210,41 +3210,51 @@ and OVERWRITE is the prefix argument."
 	 (dictree-filename dict))
     (setq filename (dictree-filename dict)))
    ((file-directory-p filename)
-    (setq filename (concat filename (dictree-name dict)))))
+    (setq filename (concat filename (dictree-name dict))))
+   ((string= (substring filename -3) ".el")
+    (setq filename (substring filename 0 -3)))
+   ((string= (substring filename -4) ".elc")
+    (setq filename (substring filename 0 -4))))
 
   (if (null filename)
       (progn
 	(message "Dictionary %s NOT written" (dictree-name dict))
 	nil)  ; return nil to indicate failure
 
-    (let ((dictname (dictree-name dict))
+    (let ((dictname (file-name-sans-extension (file-name-nondirectory filename)))
 	  buff tmpfile)
-      (save-excursion
-	;; create a temporary file
-	(setq buff
-	      (find-file-noselect
-	       (setq tmpfile (make-temp-file (dictree-name dict)))))
-	(set-buffer buff)
-	;; byte-compiler seems to b0rk on dos line-endings in some Emacsen
-	(set-buffer-file-coding-system 'utf-8-unix)
-	;; call the appropriate write function to write the dictionary code
-	(if (dictree--meta-dict-p dict)
-	    (dictree--write-meta-dict-code dict)
-	  (dictree--write-dict-code dict))
-	(save-buffer)
-	(kill-buffer buff))
 
-      ;; prompt to overwrite if necessary
-      (when (or overwrite
-		(string= filename (dictree-filename dict))
+      ;; prompt for confirmation if necessary
+      (when (or (string= dictname (dictree-name dict))
 		(and
-		 (or (eq compilation 'compiled)
-		     (not (file-exists-p (concat filename ".el"))))
-		 (or (eq compilation 'uncompiled)
-		     (not (file-exists-p (concat filename ".elc")))))
-		(y-or-n-p
-		 (format "File %s already exists. Overwrite? "
-			 (concat filename ".el(c)"))))
+		 (y-or-n-p (format "Change dictionary name? "))
+		 (or overwrite
+		     (and
+		      (or (eq compilation 'compiled)
+			  (not (file-exists-p (concat filename ".el"))))
+		      (or (eq compilation 'uncompiled)
+			  (not (file-exists-p (concat filename ".elc")))))
+		     (y-or-n-p
+		      (format "File %s already exists. Overwrite? "
+			      (concat filename ".el(c)"))))))
+	(setf (dictree-name dict) dictname)
+	(setf (dictree-filename dict) filename)
+
+	(save-excursion
+	  ;; create a temporary file
+	  (setq buff
+		(find-file-noselect
+		 (setq tmpfile (make-temp-file dictname))))
+	  (set-buffer buff)
+	  ;; byte-compiler seems to b0rk on dos line-endings in some Emacsen
+	  (set-buffer-file-coding-system 'utf-8-unix)
+	  ;; call the appropriate write function to write the dictionary code
+	  (if (dictree--meta-dict-p dict)
+	      (dictree--write-meta-dict-code dict)
+	    (dictree--write-dict-code dict))
+	  (save-buffer)
+	  (kill-buffer buff))
+
 	(condition-case nil
 	    (progn
 	      ;; move the uncompiled version to its final destination
@@ -3263,9 +3273,7 @@ and OVERWRITE is the prefix argument."
 	  (error "Error writing dictionary. Dictionary %s NOT saved"
 		 dictname))
 
-	(setf (dictree-modified dict) nil)
-	(setf (dictree-filename dict) filename))
-
+	(setf (dictree-modified dict) nil))
       (delete-file tmpfile)
       (message "Dictionary %s saved to %s" dictname filename)
       t)  ; return t to indicate dictionary was successfully saved
