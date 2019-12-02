@@ -3354,10 +3354,17 @@ Returns the dictionary if successful, nil otherwise.
 Interactively, FILE is read from the mini-buffer."
   (interactive (list (read-dict "Load dictionary from file: " nil nil t)))
 
-  ;; if we've be passed an already-loaded dictionary, just return it
-  (if (dictree-p file) file
+  (cond
+   ;; if we've be passed an already-loaded dictionary, just return it
+   ((dictree-p file) file)
+   ((and (symbolp file)
+	 (condition-case nil
+	     (dictree-p (symbol-value file))
+	   (void-variable nil)))
+    (symbol-value file))
 
-    ;; load the dictionary
+   (t  ;; otherwise, load the dictionary
+    (when (symbolp file) (setq file (symbol-name file)))
     (if (not (load file t))
 	;; if loading failed, throw error interactively, return nil
 	;; non-interactively
@@ -3375,7 +3382,7 @@ Interactively, FILE is read from the mini-buffer."
 	      nil)
 	  ;; return dictionary on sucess
 	  (message (format "Loaded dictionary %s" dictname))
-	  dict)))))
+	  dict))))))
 
 
 (defun dictree-unload (dict &optional dont-save)
@@ -3788,82 +3795,59 @@ are created when using a trie that is not self-balancing, see
 	;; insert the keys starting from the median to ensure a
 	;; reasonably well-balanced tree
 	(let* ((lines (count-lines (point-min) (point-max)))
-	       (midpt (+ (/ lines 2) (mod lines 2)))
-	       entry)
-	  (message "Inserting keys in %s...(1 of %d)"
-		   (dictree-name dict) lines)
-	  ;; insert the median key and set the dictionary's modified
-	  ;; flag
-	  (if balance
-	      (dictree--goto-line midpt)
-	    (goto-char (point-min)))
-	  (when (setq entry
-		      (condition-case nil
-			  (dictree--read-line key-loadfun data-loadfun
-					      plist-loadfun)
-			(error (error "Error reading line %d of %s"
-				      midpt file))))
-	    (dictree-insert dict (car entry) (nth 1 entry)
-			    insert-function)
-	    (setf (dictree--cell-plist
-		   (dictree--lookup dict (car entry) nil))
-		  (nth 2 entry)))
-	  ;; insert keys successively further away from the median in
-	  ;; both directions
-	  (dotimes (i (1- (if balance midpt lines)))
-	    (if balance
-		(dictree--goto-line (+ midpt i 1))
-	      (forward-line 1))
-	    (when (setq entry
-			(condition-case nil
-			    (dictree--read-line key-loadfun data-loadfun
-						plist-loadfun)
-			  (error (error "Error reading line %d of %s"
-					(+ midpt i 1) file))))
-	      (dictree-insert dict (car entry) (nth 1 entry)
-			      insert-function)
-	      (setf (dictree--cell-plist
-		     (dictree--lookup dict (car entry) nil))
-		    (nth 2 entry)))
-	    (when (= 49 (mod i 50))
-	      (message "Inserting keys in %s...(%d of %d)"
-		       (dictree-name dict)
-		       (if balance (+ (* 2 i) 2) i)
-		       lines))
-	    (when balance
+	       (midpt (+ (/ lines 2) (mod lines 2))))
+	  (message "Inserting keys in %s...(1 of %d)" (dictree-name dict) lines)
+
+	  ;; insert the median key and set the dictionary's modified flag
+	  (cond
+	   (balance
+	    (dictree--goto-line midpt)
+	    (dictree--populate dict midpt file
+			       insert-function key-loadfun data-loadfun plist-loadfun)
+	    ;; insert keys successively further away from the median in both directions
+	    (dotimes (i (1- midpt))
+	      (dictree--goto-line (+ midpt i 1))
+	      (dictree--populate dict (+ midpt i 1) file
+				 insert-function key-loadfun data-loadfun plist-loadfun)
+	      (when (= 49 (mod i 50))
+		(message "Inserting keys in %s...(%d of %d)"
+			 (dictree-name dict) (+ (* 2 i) 2) lines))
 	      (dictree--goto-line (- midpt i 1))
-	      (when (setq entry
-			  (condition-case nil
-			      (dictree--read-line key-loadfun data-loadfun
-						  plist-loadfun)
-			    (error (error "Error reading line %d of %s"
-					  (- midpt i 1) file))))
-		(dictree-insert dict (car entry)
-				(nth 1 entry) insert-function)
-		(setf
-		 (dictree--cell-plist
-		  (dictree--lookup dict (car entry) nil))
-		 (nth 2 entry)))))
+	      (dictree--populate dict (- midpt i 1) file
+				 insert-function key-loadfun data-loadfun plist-loadfun))
+	    ;; if inserting from mid-point out, and file contains an even
+	    ;; number of keys, we still have to add the last one
+	    (when (= 0 (mod lines 2))
+	      (dictree--goto-line lines)
+	      (dictree--populate dict lines file
+				 insert-function key-loadfun data-loadfun plist-loadfun)))
 
-	  ;; if inserting from mid-point out, and file contains an even
-	  ;; number of keys, we still have to add the last one
-	  (when (and balance (= 0 (mod lines 2)))
-	    (dictree--goto-line lines)
-	    (when (setq entry
-			(condition-case nil
-			    (dictree--read-line key-loadfun data-loadfun
-						plist-loadfun)
-			  (error (error "Error reading line %d of %s"
-					lines file))))
-	      (dictree-insert dict (car entry) (nth 1 entry)
-			      insert-function)
-	      (setf (dictree--cell-plist
-		     (dictree--lookup dict (car entry) nil))
-		    (nth 2 entry))))
+	   (t
+	    (goto-char (point-min))
+	    (dotimes (i lines)
+	      (dictree--populate dict (1+ i) file
+				 insert-function key-loadfun data-loadfun plist-loadfun)
+	      (when (= 49 (mod i 50))
+		(message "Inserting keys in %s...(%d of %d)" (dictree-name dict) (1+ i) lines))
+	      (forward-line 1)))
+	   ))
 
-	  (message "Inserting keys in %s...done" (dictree-name dict)))
+	(message "Inserting keys in %s...done" (dictree-name dict))
 	(kill-buffer buff)))))
 
+
+(defun dictree--populate (dict &optional line file
+			       insert-function key-loadfun data-loadfun plist-loadfun)
+  ;; Read entry from current line of current buffer, and insert it in DICT.
+  (let (entry)
+    (when (setq entry
+		(condition-case nil
+		    (dictree--read-line key-loadfun data-loadfun plist-loadfun)
+		  (error (error "Error reading line %d of %s" line file))))
+      (dictree-insert dict (car entry) (nth 1 entry) insert-function)
+      (setf (dictree--cell-plist
+	     (dictree--lookup dict (car entry) nil))
+	    (nth 2 entry)))))
 
 
 (defun dictree--read-line
@@ -3886,7 +3870,6 @@ are created when using a trie that is not self-balancing, see
 	(when plist-loadfun (funcall plist-loadfun plist))
 	;; return what we've read
 	(list key data plist)))))
-
 
 
 (defun dictree-dump-to-buffer (dict &optional buffer type)
