@@ -3240,6 +3240,7 @@ and OVERWRITE is the prefix argument."
 	(setf (dictree-name dict) dictname)
 	(setf (dictree-filename dict) filename)
 
+	(message "Writing dictionary %s to %s..." dictname filename)
 	(save-excursion
 	  ;; create a temporary file
 	  (setq buff
@@ -3275,7 +3276,7 @@ and OVERWRITE is the prefix argument."
 
 	(setf (dictree-modified dict) nil))
       (delete-file tmpfile)
-      (message "Dictionary %s saved to %s" dictname filename)
+      (message "Writing dictionary %s to %s...done" dictname filename)
       t)  ; return t to indicate dictionary was successfully saved
     ))
 
@@ -3478,7 +3479,7 @@ is the prefix argument."
 	  (progn
 	    ;; transform trie to print form
 	    (trie-transform-for-print (dictree--trie tmpdict))
-	    (insert "(setq " dictname " '")
+	    (insert "(setq " dictname)
 	    (prin1 tmpdict (current-buffer))
 	    (insert ")\n"))
 	;; if dictionary doesn't use any custom save functions, tmpdict's trie
