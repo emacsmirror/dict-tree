@@ -1,9 +1,9 @@
 ;;; dict-tree.el --- Dictionary data structure  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2004-2015, 2017-2018  Free Software Foundation, Inc
+;; Copyright (C) 2004-2015, 2017-2019  Free Software Foundation, Inc
 
 ;; Author: Toby Cubitt <toby-predictive@dr-qubit.org>
-;; Version: 0.15
+;; Version: 0.16
 ;; Keywords: extensions, matching, data structures
 ;;           trie, tree, dictionary, completion, regexp
 ;; Package-Requires: ((trie "0.3) (tNFA "0.1.1") (heap "0.3"))
@@ -221,27 +221,29 @@ If START or END is negative, it counts from the end."
 ;;                     Wrapping functions
 
 ;; return wrapped insfun to deal with data wrapping
-(dictree--if-lexical-binding
-    (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
-      (lambda (new old)
-	(dictree--cell-set-data old (funcall insfun
-					     (dictree--cell-data new)
-					     (dictree--cell-data old)))
-	old))
+(defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
+  (lambda (new old)
+    (dictree--cell-set-data old (funcall insfun
+					 (dictree--cell-data new)
+					 (dictree--cell-data old)))
+    old))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-insfun (insfun)  ; INTERNAL USE ONLY
     `(lambda (new old)
        (dictree--cell-set-data old (,insfun (dictree--cell-data new)
-					    (dictree--cell-data old)))
+  					    (dictree--cell-data old)))
        old)))
 
 
 ;; return wrapped rankfun to deal with data wrapping
-(dictree--if-lexical-binding
-    (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
-      (lambda (a b)
-	(funcall rankfun
-		 (cons (car a) (dictree--cell-data (cdr a)))
-		 (cons (car b) (dictree--cell-data (cdr b))))))
+(defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
+  (lambda (a b)
+    (funcall rankfun
+	     (cons (car a) (dictree--cell-data (cdr a)))
+	     (cons (car b) (dictree--cell-data (cdr b))))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-rankfun (rankfun)  ; INTERNAL USE ONLY
     `(lambda (a b)
        (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
@@ -249,23 +251,24 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped rankfun to ignore regexp grouping data
-(dictree--if-lexical-binding
-    (defun dictree--wrap-regexp-rankfun (rankfun)
-      (lambda (a b)
-	;; if car of argument contains a key+group list rather than a straight
-	;; key, remove group list
-	;; FIXME: the test for straight key, below, will fail if the key is a
-	;;        list, and the first element of the key is itself a list
-	;;        (there might be no easy way to fully fix this...)
-	(if (or (atom (car a))
-		(and (listp (car a)) (not (sequencep (caar a)))))
-	    (setq a (cons (car a) (dictree--cell-data (cdr a))))
-	  (setq a (cons (caar a) (dictree--cell-data (cdr a)))))
-	(if (or (atom (car b))
-		(and (listp (car b)) (not (sequencep (caar b)))))
-	    (setq b (cons (car b) (dictree--cell-data (cdr b))))
-	  (setq b (cons (caar b) (dictree--cell-data (cdr b)))))
-	(funcall rankfun a b)))
+(defun dictree--wrap-regexp-rankfun (rankfun)
+  (lambda (a b)
+    ;; if car of argument contains a key+group list rather than a straight
+    ;; key, remove group list
+    ;; FIXME: the test for straight key, below, will fail if the key is a
+    ;;        list, and the first element of the key is itself a list
+    ;;        (there might be no easy way to fully fix this...)
+    (if (or (atom (car a))
+	    (and (listp (car a)) (not (sequencep (caar a)))))
+	(setq a (cons (car a) (dictree--cell-data (cdr a))))
+      (setq a (cons (caar a) (dictree--cell-data (cdr a)))))
+    (if (or (atom (car b))
+	    (and (listp (car b)) (not (sequencep (caar b)))))
+	(setq b (cons (car b) (dictree--cell-data (cdr b))))
+      (setq b (cons (caar b) (dictree--cell-data (cdr b)))))
+    (funcall rankfun a b)))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-regexp-rankfun (rankfun)
     `(lambda (a b)
        ;; if car of argument contains a key+group list rather than a straight
@@ -274,61 +277,63 @@ If START or END is negative, it counts from the end."
        ;;        list, and the first element of the key is itself a list
        ;;        (there might be no easy way to fully fix this...)
        (if (or (atom (car a))
-	       (and (listp (car a)) (not (sequencep (caar a)))))
-	    (setq a (cons (car a) (dictree--cell-data (cdr a))))
+  	       (and (listp (car a)) (not (sequencep (caar a)))))
+	   (setq a (cons (car a) (dictree--cell-data (cdr a))))
   	 (setq a (cons (caar a) (dictree--cell-data (cdr a)))))
        (if (or (atom (car b))
-	       (and (listp (car b)) (not (sequencep (caar b)))))
-	   (setq b (cons (car b) (dictree--cell-data (cdr b))))
+  	       (and (listp (car b)) (not (sequencep (caar b)))))
+  	   (setq b (cons (car b) (dictree--cell-data (cdr b))))
   	 (setq b (cons (caar b) (dictree--cell-data (cdr b)))))
        (,rankfun a b))))
 
 ;; return wrapped sortfun to ignore regexp grouping data
-(dictree--if-lexical-binding
-    (defun dictree--wrap-regexp-sortfun (cmpfun &optional reverse)
-	(let ((sortfun (trie-construct-sortfun cmpfun reverse)))
-	  (lambda (a b)
-	    ;; if car of argument contains a key+group list rather than a
-	    ;; straight key, remove group list
-	    ;; FIXME: the test for straight key, below, will fail if the key
-	    ;;        is a list, and the first element of the key is itself a
-	    ;;        list (there might be no easy way to fully fix this...)
-	    (if (or (atom (car a))
-		    (and (listp (car a)) (not (sequencep (caar a)))))
-		(setq a (car a))
-	      (setq a (caar a)))
-	    (if (or (atom (car b))
-		    (and (listp (car b)) (not (sequencep (caar b)))))
-		(setq b (car b))
-	      (setq b (caar b)))
-	    (funcall sortfun a b))))
+(defun dictree--wrap-regexp-sortfun (cmpfun &optional reverse)
+  (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
+    (lambda (a b)
+      ;; if car of argument contains a key+group list rather than a
+      ;; straight key, remove group list
+      ;; FIXME: the test for straight key, below, will fail if the key
+      ;;        is a list, and the first element of the key is itself a
+      ;;        list (there might be no easy way to fully fix this...)
+      (if (or (atom (car a))
+	      (and (listp (car a)) (not (sequencep (caar a)))))
+	  (setq a (car a))
+	(setq a (caar a)))
+      (if (or (atom (car b))
+	      (and (listp (car b)) (not (sequencep (caar b)))))
+	  (setq b (car b))
+	(setq b (caar b)))
+      (funcall sortfun a b))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-regexp-sortfun (cmpfun &optional reverse)
     (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
       `(lambda (a b)
-	 ;; if car of argument contains a key+group list rather than a
-	 ;; straight key, remove group list
-	 ;; FIXME: the test for straight key, below, will fail if the key
-	 ;;        is a list, and the first element of the key is itself a
-	 ;;        list (there might be no easy way to fully fix this...)
-	 (if (or (atom (car a))
-		 (and (listp (car a)) (not (sequencep (caar a)))))
-	     (setq a (car a))
-	   (setq a (caar a)))
-	 (if (or (atom (car b))
-		 (and (listp (car b)) (not (sequencep (caar b)))))
-	     (setq b (car b))
-	   (setq b (caar b)))
-	 (,sortfun a b)))))
+  	 ;; if car of argument contains a key+group list rather than a
+  	 ;; straight key, remove group list
+  	 ;; FIXME: the test for straight key, below, will fail if the key
+  	 ;;        is a list, and the first element of the key is itself a
+  	 ;;        list (there might be no easy way to fully fix this...)
+  	 (if (or (atom (car a))
+  		 (and (listp (car a)) (not (sequencep (caar a)))))
+  	     (setq a (car a))
+  	   (setq a (caar a)))
+  	 (if (or (atom (car b))
+  		 (and (listp (car b)) (not (sequencep (caar b)))))
+  	     (setq b (car b))
+  	   (setq b (caar b)))
+  	 (,sortfun a b)))))
 
 
 ;; return wrapped rankfun to deal with data wrapping and ignore fuzzy query
 ;; distance data. Note: works for both fuzzy-matching and fuzzy-completion.
-(dictree--if-lexical-binding
-    (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
-      (lambda (a b)
-	(funcall rankfun
-		 (cons (car a) (dictree--cell-data (cdr a)))
-		 (cons (car b) (dictree--cell-data (cdr b))))))
+(defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
+  (lambda (a b)
+    (funcall rankfun
+	     (cons (car a) (dictree--cell-data (cdr a)))
+	     (cons (car b) (dictree--cell-data (cdr b))))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-fuzzy-rankfun (rankfun)  ; INTERNAL USE ONLY
     `(lambda (a b)
        (,rankfun (cons (car a) (dictree--cell-data (cdr a)))
@@ -363,25 +368,27 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped sortfun to ignore fuzzy query distance data
-(dictree--if-lexical-binding
-    (defun dictree--wrap-fuzzy-sortfun (cmpfun &optional reverse)
-      (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
-	(lambda (a b) (funcall sortfun (car a) (car b)))))
+(defun dictree--wrap-fuzzy-sortfun (cmpfun &optional reverse)
+  (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
+    (lambda (a b) (funcall sortfun (car a) (car b)))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-fuzzy-sortfun (cmpfun &optional reverse)
     (let ((sortfun (trie-construct-sortfun cmpfun reverse)))
       `(lambda (a b) (,sortfun (car a) (car b))))))
 
 
 ;; return wrapped combfun to deal with data wrapping
-(dictree--if-lexical-binding
-    (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
-      (lambda (cell1 cell2)
-	(dictree--cell-create
-	 (funcall combfun
-		  (dictree--cell-data cell1)
-		  (dictree--cell-data cell2))
-	 (append (dictree--cell-plist cell1)
-		 (dictree--cell-plist cell2)))))
+(defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
+  (lambda (cell1 cell2)
+    (dictree--cell-create
+     (funcall combfun
+	      (dictree--cell-data cell1)
+	      (dictree--cell-data cell2))
+     (append (dictree--cell-plist cell1)
+	     (dictree--cell-plist cell2)))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-combfun (combfun)  ; INTERNAL USE ONLY
     `(lambda (cell1 cell2)
        (dictree--cell-create
@@ -392,34 +399,37 @@ If START or END is negative, it counts from the end."
 
 
 ;; return wrapped filter function to deal with data wrapping
-(dictree--if-lexical-binding
-    (defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
-      (lambda (key data) (funcall filter key (dictree--cell-data data))))
+(defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
+  (lambda (key data) (funcall filter key (dictree--cell-data data))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-filter (filter)  ; INTERNAL USE ONLY
     `(lambda (key data) (,filter key (dictree--cell-data data)))))
 
 
 ;; return wrapped result function to deal with data wrapping
-(dictree--if-lexical-binding
-    (defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
-      (lambda (res)
-	(funcall resultfun (car res) (dictree--cell-data (cdr res)))))
+(defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
+  (lambda (res)
+    (funcall resultfun (car res) (dictree--cell-data (cdr res)))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--wrap-resultfun (resultfun)  ; INTERNAL USE ONLY
     `(lambda (res) (,resultfun (car res) (dictree--cell-data (cdr res))))))
 
 
 ;; construct lexicographic sort function from DICT's comparison function.
 ;; ACCESSOR is used to obtain the sort key, defaulting to `car'.
-;;(dictree--if-lexical-binding
 (defun dictree--construct-sortfun (comparison-function &optional accessor)  ; INTERNAL USE ONLY
   (unless accessor (setq accessor #'car))
   (let ((sortfun (trie-construct-sortfun comparison-function)))
     (lambda (a b)
       (funcall sortfun (funcall accessor a) (funcall accessor b)))))
-    ;; (defun dictree--construct-sortfun (dict &optional accessor)  ; INTERNAL USE ONLY
-    ;;   `(lambda (a b)
-    ;; 	 (,(trie-construct-sortfun (dictree-comparison-function dict))
-    ;; 	  (,accessor a)	(,accessor b)))))
+
+(dictree--if-lexical-binding nil
+  (defun dictree--construct-sortfun (dict &optional accessor)  ; INTERNAL USE ONLY
+    `(lambda (a b)
+       (,(trie-construct-sortfun (dictree-comparison-function dict))
+	(,accessor a)	(,accessor b)))))
 
 
 
@@ -2093,19 +2103,20 @@ Interactively, DICT is read from the mini-buffer."
 
 ;; Wrap SORTFUN, which sorts keys, so it can act on dictree--meta-stack
 ;; elements.
-(dictree--if-lexical-binding
-    (defun dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
-      (if reverse
-	  (lambda (b a) (funcall sortfun (car (dictree-stack-first a))
-				 (car (dictree-stack-first b))))
-	(lambda (a b) (funcall sortfun (car (dictree-stack-first a))
-			       (car (dictree-stack-first b))))))
+(defun dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
+  (if reverse
+      (lambda (b a) (funcall sortfun (car (dictree-stack-first a))
+			     (car (dictree-stack-first b))))
+    (lambda (a b) (funcall sortfun (car (dictree-stack-first a))
+			   (car (dictree-stack-first b))))))
+
+(dictree--if-lexical-binding nil
   (defun dictree--construct-meta-stack-heapfun (sortfun &optional reverse)
     (if reverse
-	`(lambda (b a) (,sortfun (car (dictree-stack-first a))
-				 (car (dictree-stack-first b))))
+  	`(lambda (b a) (,sortfun (car (dictree-stack-first a))
+  				 (car (dictree-stack-first b))))
       `(lambda (a b) (,sortfun (car (dictree-stack-first a))
-			       (car (dictree-stack-first b)))))))
+  			       (car (dictree-stack-first b)))))))
 
 
 (defun* dictree-stack (dict &key type reverse pfxfilter)
