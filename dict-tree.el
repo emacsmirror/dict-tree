@@ -91,6 +91,8 @@
 
 (eval-when-compile (require 'cl))
 (require 'cl-lib)
+(require 'gv)
+
 (require 'trie)
 (require 'tNFA)
 
@@ -3276,8 +3278,8 @@ and OVERWRITE is the prefix argument."
 	      ;; destination
 	      (unless (eq compilation 'uncompiled)
 		(if (save-window-excursion
-		      (let ((byte-compile-disable-print-circle t))
-			(byte-compile-file tmpfile)))
+;;		      (let ((byte-compile-disable-print-circle t))
+			(byte-compile-file tmpfile));)
 		    (rename-file (concat tmpfile ".elc")
 				 (concat filename ".elc")
 				 'overwrite)
