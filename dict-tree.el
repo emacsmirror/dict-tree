@@ -2616,13 +2616,13 @@ to its constituent dicts."
 
       ;; if there's a cache entry with enough results, use it
       (if (and cachefun
-	       ;; (or (symbolp rank-function)
-	       ;; 	   ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
-	       ;; 	   (and (consp rank-function)
-	       ;; 		(symbolp (car rank-function))
-	       ;; 		(symbolp (cdr rank-function))))
-	       ;; (symbolp filter)
-	       ;; (symbolp pfxfilter)
+	       (or (symbolp rank-function)
+	       	   ;; can be '(t . rankfun) for `dictree-fuzzy-complete'
+	       	   (and (consp rank-function)
+	       		(symbolp (car rank-function))
+	       		(symbolp (cdr rank-function))))
+	       (symbolp filter)
+	       (symbolp pfxfilter)
 	       (setq cache (funcall cachefun dic))
 	       (setq cache-entry
 		     (gethash (list args rank-function reverse filter pfxfilter)
