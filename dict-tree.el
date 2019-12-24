@@ -2785,6 +2785,12 @@ arguments: the completion, and its associated data. If the filter
 function returns nil, the completion is not included in the
 results, and doesn't count towards MAXNUM.
 
+The PFXFILTER argument sets a prefix filter function. If
+supplied, it is called with one argument: a sequence of the same
+type as PREFIX. If it returns nil, all completions with that
+sequence as a prefix will be ignored. When PFXFILTER suffices, it
+is more efficient than using FILTER for the same purpose.
+
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
 accept two arguments: a key and its associated data. Its return
@@ -2913,6 +2919,12 @@ non-shy grouping constructs, the first argument is of the form
 If the FILTER function returns nil, the match is not included in
 the results, and does not count towards MAXNUM.
 
+The PFXFILTER argument sets a prefix filter function. If
+supplied, it is called with one argument: a sequence of the same
+type as PREFIX. If it returns nil, all matches with that sequence
+as a prefix will be ignored. When PFXFILTER suffices, it is more
+efficient than using FILTER for the same purpose.
+
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
@@ -3010,6 +3022,12 @@ supplied, it is called for each possible match with two
 arguments: a (KEY . DIST) cons cell, and DATA. If the filter
 function returns nil, the match is not included in the results,
 and does not count towards MAXNUM.
+
+The PFXFILTER argument sets a prefix filter function. If
+supplied, it is called with one argument: a sequence of the same
+type as PREFIX. If it returns nil, all matches with that sequence
+as a prefix will be ignored. When PFXFILTER suffices, it is more
+efficient than using FILTER for the same purpose.
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
@@ -3123,10 +3141,17 @@ fuzzy-match caching enabled.
 
 
 FILTER sets a filter function for the matches. If supplied, it is
-called for each possible match with two arguments: a
+called for each possible completion with two arguments: a
 \(KEY DIST PFXLEN\) list, and DATA. If FILTER returns nil, that
 match is not included in the results, and does not count towards
 MAXNUM.
+
+The PFXFILTER argument sets a prefix filter function. If
+supplied, it is called with one argument: a sequence of the same
+type as PREFIX. If it returns nil, all completions with that
+sequence as a prefix will be ignored. When PFXFILTER suffices, it
+is more efficient than using FILTER for the same purpose.
+
 
 RESULTFUN defines a function used to process results before
 adding them to the final result list. If specified, it should
