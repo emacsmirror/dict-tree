@@ -1313,29 +1313,29 @@ Otherwise, return nil."
     ;; synchronize query caches if something's actually changed
     (when (or deleted (not (equal olddata newdata)))
       (dolist (cachefuns
-	       '((dictree-complete-cache
+	       `((dictree-complete-cache
 		  dictree--synchronize-completion-cache
 		  dictree--prefix-p)
 		 (dictree-regexp-cache
 		  dictree--synchronize-regexp-cache
-		  (lambda (regexp key)
-		    (tNFA-regexp-match
-		     regexp key :test (trie--construct-equality-function
-				       (dictree--comparison-function dict)))))
+		  ,(lambda (regexp key)
+		     (tNFA-regexp-match
+		      regexp key :test (trie--construct-equality-function
+					(dictree--comparison-function dict)))))
 		 (dictree-fuzzy-match-cache
 		  dictree--synchronize-fuzzy-match-cache
-		  (lambda (string dist key)
-		    (if (consp dist)
-			(<= (Lewenstein-distance (substring string (car dist)) key)
-			    (cdr dist))
-		      (<= (Lewenstein-distance string key) dist))))
+		  ,(lambda (string dist key)
+		     (if (consp dist)
+			 (<= (Lewenstein-distance (substring string (car dist)) key)
+			     (cdr dist))
+		       (<= (Lewenstein-distance string key) dist))))
 		 (dictree-fuzzy-complete-cache
 		  dictree--synchronize-fuzzy-complete-cache
-		  (lambda (prefix dist key)
-		    (if (consp dist)
-			(<= (Lewenstein-distance (substring prefix (car dist)) key)
-			    (cdr dist))
-		      (<= (Lewenstein-distance prefix key) dist))))
+		  ,(lambda (prefix dist key)
+		     (if (consp dist)
+			 (<= (Lewenstein-distance (substring prefix (car dist)) key)
+			     (cdr dist))
+		       (<= (Lewenstein-distance prefix key) dist))))
 		 ))
 	(when (funcall (nth 0 cachefuns) dict)
 	  (maphash
