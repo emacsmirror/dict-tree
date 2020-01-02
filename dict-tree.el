@@ -3878,35 +3878,65 @@ are created when using a trie that is not self-balancing, see
 (defun dictree--populate (dict &optional line file
 			       insert-function key-loadfun data-loadfun plist-loadfun)
   ;; Read entry from current line of current buffer, and insert it in DICT.
-  (let (entry)
-    (when (setq entry
-		(condition-case nil
-		    (dictree--read-line key-loadfun data-loadfun plist-loadfun)
-		  (error (error "Error reading line %d of %s" line file))))
-      (dictree-insert dict (car entry) (nth 1 entry) insert-function)
-      (setf (dictree--cell-plist
-	     (dictree--lookup dict (car entry) nil))
-	    (nth 2 entry)))))
+  (destructuring-bind (key data plist)
+      (dictree--read-line line file key-loadfun data-loadfun plist-loadfun)
+    ;; insert entry in DICT
+    (dictree-insert dict key data insert-function)
+    (setf (dictree--cell-plist (dictree--lookup dict key nil)) plist)))
 
 
 (defun dictree--read-line
-  (&optional key-loadfun data-loadfun plist-loadfun)
+  (&optional line file key-loadfun data-loadfun plist-loadfun)
   ;; Return a list containing the key, data (if any, otherwise nil) and
   ;; property list (ditto) at the current line of the current buffer.
   (save-excursion
     (let (key data plist)
       ;; read key
       (beginning-of-line)
-      (when (setq key (read (current-buffer)))
-	(when key-loadfun (setq key (funcall key-loadfun key)))
+      (when (setq key (condition-case nil
+			  (read (current-buffer))
+			(error (error "Error reading key from line %d of %s"
+				      line file))))
+	(when key-loadfun
+	  (setq key (condition-case nil
+			(funcall key-loadfun key)
+		      (error (error "Error calling KEY-LOADFUN on key read from line %d of %s"
+				    line file)))))
 	;; if there's anything after the key, use it as data
 	(unless (eq (line-end-position) (point))
-	  (setq data (read (current-buffer))))
-	(when data-loadfun (setq data (funcall data-loadfun data)))
+	  (setq data (condition-case nil
+			 (read (current-buffer))
+		       (error (error "Error reading data from line %d of %s"
+				     line file)))))
+	(when data-loadfun
+	  (setq data
+		(condition-case nil
+		    (funcall data-loadfun data)
+		  (error (error "Error calling DATA-LOADFUN on data read from line %d of %s"
+				line file)))))
 	;; if there's anything after the data, use it as the property list
 	(unless (eq (line-end-position) (point))
-	  (setq plist (read (current-buffer))))
-	(when plist-loadfun (funcall plist-loadfun plist))
+	  (setq plist
+		(condition-case nil
+		    (read (current-buffer))
+		  (error (error "Error reading plist from line %d of %s"
+				line file)))))
+	(when plist-loadfun
+	  (setq plist
+		(condition-case nil
+		    (funcall plist-loadfun plist)
+		  (error (error "Error calling PLIST-LOADFUN on plist read from line %d of %s"
+				line file)))))
+
+	;; sanity check what we read from file
+	(if (symbolp key)
+	    (setq key (symbol-name key))
+	  (unless (or (vectorp key) (stringp key) (listp key))
+	    (error "Invalid key at line %d of %s - must be string, vector, list or symbol"
+		   line file)))
+	(unless (and (listp plist) (cl-evenp (length plist)))
+	  (error "Invalid plist at line %d of %s" line file))
+
 	;; return what we've read
 	(list key data plist)))))
 
