@@ -1,0 +1,3 @@
+*.elc
+/dict-tree-autoloads.el
+/dict-tree-pkg.el
